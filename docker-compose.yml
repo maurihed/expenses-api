@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+  go-app:
+    container_name: go-app
+    build: .
+    environment:
+      DB_HOST: go_db
+      DB_PORT: "5432"
+      DB_USER: "postgresaaaa"
+      DB_PASSWORD: "olv"
+      DB_NAME: "expenses"
+    ports:
+      - 8000:8000
+    depends_on:
+      go_db:
+        condition: service_healthy
+  go_db:
+    image: postgres:12
+    container_name: go_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: olv
+      POSTGRES_DB: expenses
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+volumes:
+  pgdata: {}
