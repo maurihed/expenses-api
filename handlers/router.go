@@ -30,6 +30,7 @@ func CreateRouter() *chi.Mux {
 
 			router.Route("/accounts", func(router chi.Router) {
 				router.Get("/", getAccounts)
+				router.Get("/{id}", getAccount)
 				router.Post("/", createAccount)
 				router.Put("/{id}", updateAccount)
 			})

@@ -23,6 +23,26 @@ func getAccounts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(accounts)
 }
 
+func getAccount(w http.ResponseWriter, r *http.Request) {
+	var account *services.Account
+	account, err := account.GetAccount(chi.URLParam(r, "id"))
+	if err != nil {
+		log.Println(err)
+		errorRes := Response{
+			Msg:  err.Error(),
+			Code: 304,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(304)
+		json.NewEncoder(w).Encode(errorRes)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(&account)
+}
+
 func createAccount(w http.ResponseWriter, r *http.Request) {
 	var account services.Account
 	err := json.NewDecoder(r.Body).Decode(&account)

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -17,6 +18,10 @@ type Transaction struct {
 	DATE        string `json:"date,omitempty" bson:"date,omitempty"`
 	DESCRIPTION string `json:"description,omitempty" bson:"description,omitempty"`
 	TYPE        string `json:"type,omitempty" bson:"type,omitempty"`
+}
+
+type InsertedId struct {
+	ID string `json:"id,omitempty" bson:"_id,omitempty"`
 }
 
 func (t *Transaction) GetTransactionsByUserId(userId string) ([]Transaction, error) {
@@ -35,7 +40,7 @@ func (t *Transaction) GetTransactionsByUserId(userId string) ([]Transaction, err
 	var transactions []Transaction
 	cursor, err := collection.Find(context.TODO(), bson.D{{Key: "accountId", Value: bson.D{{Key: "$in", Value: accountsIds}}}})
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 		return nil, err
 	}
 	defer cursor.Close(context.Background())
@@ -47,9 +52,9 @@ func (t *Transaction) GetTransactionsByUserId(userId string) ([]Transaction, err
 	return transactions, nil
 }
 
-func (t *Transaction) InsertTransaction(entry Transaction) error {
+func (t *Transaction) InsertTransaction(entry Transaction) (*InsertedId, error) {
 	collection := getCollectionPointer("transactions")
-	_, err := collection.InsertOne(context.TODO(), Transaction{
+	result, err := collection.InsertOne(context.TODO(), Transaction{
 		ACCOUNT_ID:  entry.ACCOUNT_ID,
 		AMOUNT:      entry.AMOUNT,
 		CATEGORY:    entry.CATEGORY,
@@ -60,10 +65,14 @@ func (t *Transaction) InsertTransaction(entry Transaction) error {
 
 	if err != nil {
 		log.Printf("Error inserting transaction: %v", err)
-		return err
+		return nil, err
 	}
 
-	return nil
+	if oid, ok := result.InsertedID.(primitive.ObjectID); ok {
+		return &InsertedId{ID: oid.Hex()}, nil
+	}
+
+	return nil, errors.New("unable to get a valid object id")
 }
 
 func (t *Transaction) UpdateTransaction(id string, entry Transaction) (*mongo.UpdateResult, error) {
@@ -74,13 +83,13 @@ func (t *Transaction) UpdateTransaction(id string, entry Transaction) (*mongo.Up
 	}
 
 	update := bson.D{
-		{"$set", bson.D{
-			{"accountId", entry.ACCOUNT_ID},
-			{"amount", entry.AMOUNT},
-			{"category", entry.CATEGORY},
-			{"date", entry.DATE},
-			{"description", entry.DESCRIPTION},
-			{"type", entry.TYPE},
+		{Key: "$set", Value: bson.D{
+			{Key: "accountId", Value: entry.ACCOUNT_ID},
+			{Key: "amount", Value: entry.AMOUNT},
+			{Key: "category", Value: entry.CATEGORY},
+			{Key: "date", Value: entry.DATE},
+			{Key: "description", Value: entry.DESCRIPTION},
+			{Key: "type", Value: entry.TYPE},
 		}},
 	}
 

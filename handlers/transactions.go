@@ -32,29 +32,21 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = transaction.InsertTransaction(transaction)
+	result, err := transaction.InsertTransaction(transaction)
 	if err != nil {
 		errorRes := Response{
-			Msg:  "Error",
+			Msg:  err.Error(),
 			Code: 304,
 		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(errorRes.Code)
 		json.NewEncoder(w).Encode(errorRes)
 		return
 	}
 
-	res := Response{
-		Msg:  "Successfully Created Transaction",
-		Code: 201,
-	}
-
-	jsonStr, err := json.Marshal(res)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(res.Code)
-	w.Write(jsonStr)
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(&result)
 }
 
 func updateTransaction(w http.ResponseWriter, r *http.Request) {

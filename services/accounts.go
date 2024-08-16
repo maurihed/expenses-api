@@ -65,6 +65,25 @@ func (t *Account) GetAccountsByUserId(userId string) ([]Account, error) {
 	return accounts, nil
 }
 
+func (t *Account) GetAccount(accountId string) (*Account, error) {
+	collection := getCollectionPointer("accounts")
+	mongoID, err := primitive.ObjectIDFromHex(accountId)
+	if err != nil {
+		log.Fatal("Error parsing object id", err)
+		return nil, err
+	}
+
+	var account Account
+
+	cursor := collection.FindOne(context.TODO(), bson.D{{Key: "_id", Value: mongoID}})
+
+	if err := cursor.Decode(&account); err != nil {
+		return nil, err
+	}
+
+	return &account, nil
+}
+
 func (t *Account) UpdateAccount(id string, entry Account) (*mongo.UpdateResult, error) {
 	collection := getCollectionPointer("accounts")
 	mongoID, err := primitive.ObjectIDFromHex(id)
