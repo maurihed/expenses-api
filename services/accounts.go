@@ -10,10 +10,10 @@ import (
 )
 
 type Account struct {
-	ID     string `json:"id,omitempty" bson:"_id,omitempty"`
-	Name   string `json:"name,omitempty" bson:"name,omitempty"`
-	Amount int    `json:"amount,omitempty" bson:"amount,omitempty"`
-	UserId string `json:"userId,omitempty" bson:"userId,omitempty"`
+	ID      string `json:"id,omitempty" bson:"_id,omitempty"`
+	Name    string `json:"name,omitempty" bson:"name,omitempty"`
+	Balance int    `json:"balance,omitempty" bson:"balance,omitempty"`
+	UserId  string `json:"userId,omitempty" bson:"userId,omitempty"`
 }
 
 var client *mongo.Client
@@ -30,9 +30,9 @@ func getCollectionPointer(collectionName string) *mongo.Collection {
 func (a *Account) InsertAccount(entry Account) error {
 	collection := getCollectionPointer("accounts")
 	_, err := collection.InsertOne(context.TODO(), Account{
-		Name:   entry.Name,
-		Amount: entry.Amount,
-		UserId: entry.UserId,
+		Name:    entry.Name,
+		Balance: entry.Balance,
+		UserId:  entry.UserId,
 	})
 
 	if err != nil {
@@ -75,7 +75,7 @@ func (t *Account) UpdateAccount(id string, entry Account) (*mongo.UpdateResult, 
 	update := bson.D{
 		{Key: "$set", Value: bson.D{
 			{Key: "name", Value: entry.Name},
-			{Key: "amount", Value: entry.Amount},
+			{Key: "balance", Value: entry.Balance},
 		}},
 	}
 
