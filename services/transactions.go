@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Transaction struct {
@@ -38,7 +39,8 @@ func (t *Transaction) GetTransactionsByUserId(userId string) ([]Transaction, err
 	collection := getCollectionPointer("transactions")
 
 	var transactions []Transaction
-	cursor, err := collection.Find(context.TODO(), bson.D{{Key: "accountId", Value: bson.D{{Key: "$in", Value: accountsIds}}}})
+	findOptions := options.Find().SetSort(bson.M{"date": -1})
+	cursor, err := collection.Find(context.TODO(), bson.D{{Key: "accountId", Value: bson.D{{Key: "$in", Value: accountsIds}}}}, findOptions)
 	if err != nil {
 		log.Println(err)
 		return nil, err
