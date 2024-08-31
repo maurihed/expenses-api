@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/maurihed/expenses-api/services"
@@ -12,8 +14,15 @@ import (
 func getTransactions(w http.ResponseWriter, r *http.Request) {
 	userId := "PENDING"
 	var transaction services.Transaction
+	month := r.URL.Query().Get("month")
+	year := r.URL.Query().Get("year")
+	if month == "" || year == "" {
+		now := time.Now()
+		year = strconv.Itoa(now.Year())
+		month = strconv.Itoa(int(now.Month()) - 1)
+	}
 
-	transactions, err := transaction.GetTransactionsByUserId(userId)
+	transactions, err := transaction.GetTransactionsByUserId(userId, month, year)
 	if err != nil {
 		log.Fatal(err)
 		return

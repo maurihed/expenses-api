@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"strconv"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -25,7 +27,7 @@ type InsertedId struct {
 	ID string `json:"id,omitempty" bson:"_id,omitempty"`
 }
 
-func (t *Transaction) GetTransactionsByUserId(userId string) ([]Transaction, error) {
+func (t *Transaction) GetTransactionsByUserId(userId string, monthStr string, year string) ([]Transaction, error) {
 	account := &Account{}
 	accounts, err := account.GetAccountsByUserId(userId)
 	if err != nil {
@@ -38,9 +40,22 @@ func (t *Transaction) GetTransactionsByUserId(userId string) ([]Transaction, err
 	}
 	collection := getCollectionPointer("transactions")
 
+	month, err := strconv.Atoi(monthStr)
+	if err != nil {
+		log.Fatalf("Failed to convert month: %v", err)
+	}
+
+	startDate := fmt.Sprintf("%s-%02d-01", year, month+1)
+	endDate := fmt.Sprintf("%s-%02d-01", year, month+2)
+
+	filter := bson.D{
+		{Key: "accountId", Value: bson.D{{Key: "$in", Value: accountsIds}}},
+		{Key: "date", Value: bson.M{"$gte": startDate, "$lt": endDate}},
+	}
+
 	var transactions []Transaction
 	findOptions := options.Find().SetSort(bson.M{"date": -1})
-	cursor, err := collection.Find(context.TODO(), bson.D{{Key: "accountId", Value: bson.D{{Key: "$in", Value: accountsIds}}}}, findOptions)
+	cursor, err := collection.Find(context.TODO(), filter, findOptions)
 	if err != nil {
 		log.Println(err)
 		return nil, err
