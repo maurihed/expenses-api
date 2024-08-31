@@ -22,6 +22,8 @@ func CreateRouter() *chi.Mux {
 		MaxAge:           300, // Maximum value not ignored by any of major browsers
 	}))
 
+	router.Get("/", healthCheck)
+
 	router.Route("/api", func(router chi.Router) {
 
 		// version 1
