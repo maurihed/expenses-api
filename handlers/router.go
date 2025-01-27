@@ -43,6 +43,14 @@ func CreateRouter() *chi.Mux {
 				router.Put("/{id}", updateTransaction)
 				router.Delete("/{id}", deleteTransaction)
 			})
+
+			router.Route("/recipes", func(router chi.Router) {
+				router.Get("/", getRecipes)
+				router.Post("/", createRecipe)
+				router.Get("/{id}", getRecipe)
+				router.Put("/{id}", updateRecipe)
+				router.Delete("/{id}", deleteRecipe)
+			})
 		})
 
 		// version 2 - add it if you want

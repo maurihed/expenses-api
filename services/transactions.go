@@ -14,13 +14,13 @@ import (
 )
 
 type Transaction struct {
-	ID          string `json:"id,omitempty" bson:"_id,omitempty"`
-	ACCOUNT_ID  string `json:"accountId,omitempty" bson:"accountId,omitempty"`
-	AMOUNT      int    `json:"amount,omitempty" bson:"amount,omitempty"`
-	CATEGORY    string `json:"category,omitempty" bson:"category,omitempty"`
-	DATE        string `json:"date,omitempty" bson:"date,omitempty"`
-	DESCRIPTION string `json:"description,omitempty" bson:"description,omitempty"`
-	TYPE        string `json:"type,omitempty" bson:"type,omitempty"`
+	ID          string  `json:"id,omitempty" bson:"_id,omitempty"`
+	ACCOUNT_ID  string  `json:"accountId,omitempty" bson:"accountId,omitempty"`
+	AMOUNT      float64 `json:"amount,omitempty" bson:"amount,omitempty"`
+	CATEGORY    string  `json:"category,omitempty" bson:"category,omitempty"`
+	DATE        string  `json:"date,omitempty" bson:"date,omitempty"`
+	DESCRIPTION string  `json:"description,omitempty" bson:"description,omitempty"`
+	TYPE        string  `json:"type,omitempty" bson:"type,omitempty"`
 }
 
 type InsertedId struct {
