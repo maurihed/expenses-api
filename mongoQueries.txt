@@ -1,0 +1,14 @@
+db.recipes.aggregate([
+  { "$match": { userId: "PENDING" } },
+  { "$lookup": { "from": "ingredients", "localField": "ingredients._id", "foreignField": "_id", "as": "ingredient" } },
+  { "$unwind": "$ingredient" },
+  { "$group": {
+      "_id": "$_id",
+      "name": { "$first": "$name" },
+      "ingredients": {
+        "$push": { "_id": "$ingredient.id", "content": "$ingredient.content", "price": "$ingredient.price", "quantity": "$ingredients.quantity" }
+      }
+    }
+  }
+])
+

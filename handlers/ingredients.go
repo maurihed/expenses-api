@@ -7,33 +7,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/maurihed/expenses-api/services"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-func getRecipe(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	objectId, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		log.Fatalf("Invalid ObjectId: %v", err)
-	}
-
-	var recipe services.Recipe
-	foundRecipe, err := recipe.GetRecipeById(objectId)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	recipe = *foundRecipe
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	json.NewEncoder(w).Encode(recipe)
-}
-
-func getRecipes(w http.ResponseWriter, r *http.Request) {
-	var recipe services.Recipe
-	// TODO: replace with real user
-	recipes, err := recipe.GetRecipesByUserId("PENDING")
+func getIngredients(w http.ResponseWriter, r *http.Request) {
+	var recipe services.Ingredient
+	recipes, err := recipe.GetIngredients()
 	if err != nil {
 		log.Println(err)
 		return
@@ -44,16 +22,15 @@ func getRecipes(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(recipes)
 }
 
-func createRecipe(w http.ResponseWriter, r *http.Request) {
-	var recipe services.Recipe
-	err := json.NewDecoder(r.Body).Decode(&recipe)
-	recipe.UserID = "PENDING"
+func createIngredient(w http.ResponseWriter, r *http.Request) {
+	var ingredient services.Ingredient
+	err := json.NewDecoder(r.Body).Decode(&ingredient)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	insertedId, err := recipe.InsertRecipe(recipe)
+	insertedId, err := ingredient.InsertIngredient(ingredient)
 	if err != nil {
 		errorRes := Response{
 			Msg:  "Error",
@@ -70,17 +47,17 @@ func createRecipe(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(&insertedId)
 }
 
-func updateRecipe(w http.ResponseWriter, r *http.Request) {
+func updateIngredient(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	var recipe services.Recipe
+	var ingredient services.Ingredient
 
-	err := json.NewDecoder(r.Body).Decode(&recipe)
+	err := json.NewDecoder(r.Body).Decode(&ingredient)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	err = recipe.UpdateRecipe(id, recipe)
+	err = ingredient.UpdateIngredient(id, ingredient)
 	if err != nil {
 		errorRes := Response{
 			Msg:  err.Error(),
@@ -112,14 +89,14 @@ func updateRecipe(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonStr)
 }
 
-func deleteRecipe(w http.ResponseWriter, r *http.Request) {
+func deleteIngredient(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	var recipe services.Recipe
+	var ingredient services.Ingredient
 
-	err := recipe.DeleteRecipe(id)
+	err := ingredient.DeleteIngredient(id)
 	if err != nil {
 		errorRes := Response{
-			Msg:  "Error deleting recipe",
+			Msg:  "Error deleting ingredient",
 			Code: 304,
 		}
 		json.NewEncoder(w).Encode(errorRes)

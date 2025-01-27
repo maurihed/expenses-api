@@ -10,16 +10,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-type Ingredient struct {
-	Id        primitive.ObjectID `json:"id,omitempty" bson:"id,omitempty"`
-	Name      string             `json:"name,omitempty" bson:"name,omitempty"`
-	Content   float64            `json:"content,omitempty" bson:"content,omitempty"`
-	Price     float64            `json:"price,omitempty" bson:"price,omitempty"`
-	Quantity  float64            `json:"quantity,omitempty" bson:"quantity,omitempty"`
-	Unit      string             `json:"unit,omitempty" bson:"unit,omitempty"`
-	UnitPrice float64            `json:"unitPrice,omitempty" bson:"unitPrice,omitempty"`
-}
-
 type Recipe struct {
 	ID          string       `json:"id,omitempty" bson:"_id,omitempty"`
 	Name        string       `json:"name,omitempty" bson:"name,omitempty"`
@@ -44,10 +34,10 @@ func (t *Recipe) GetRecipeById(id primitive.ObjectID) (*Recipe, error) {
 		},
 		{
 			"$lookup": bson.M{
-				"from":         "ingredients",    // Join with the ingredients collection
-				"localField":   "ingredients.id", // Field in recipe collection
-				"foreignField": "_id",            // Field in ingredient collection
-				"as":           "ingredient",     // Alias for the joined data
+				"from":         "ingredients",     // Join with the ingredients collection
+				"localField":   "ingredients._id", // Field in recipe collection
+				"foreignField": "_id",             // Field in ingredient collection
+				"as":           "ingredient",      // Alias for the joined data
 			},
 		},
 		{
@@ -59,7 +49,7 @@ func (t *Recipe) GetRecipeById(id primitive.ObjectID) (*Recipe, error) {
 				"name": bson.M{"$first": "$name"}, // Keep the recipe name
 				"ingredients": bson.M{
 					"$push": bson.M{
-						"id":       "$ingredient._id",
+						"_id":      "$ingredient._id",
 						"name":     "$ingredient.name",
 						"content":  "$ingredient.content",
 						"price":    "$ingredient.price",
@@ -103,10 +93,10 @@ func (t *Recipe) GetRecipesByUserId(userId string) ([]Recipe, error) {
 		},
 		{
 			"$lookup": bson.M{
-				"from":         "ingredients",    // Join with the ingredients collection
-				"localField":   "ingredients.id", // Field in recipe collection
-				"foreignField": "_id",            // Field in ingredient collection
-				"as":           "ingredient",     // Alias for the joined data
+				"from":         "ingredients",     // Join with the ingredients collection
+				"localField":   "ingredients._id", // Field in recipe collection
+				"foreignField": "_id",             // Field in ingredient collection
+				"as":           "ingredient",      // Alias for the joined data
 			},
 		},
 		{
@@ -118,7 +108,7 @@ func (t *Recipe) GetRecipesByUserId(userId string) ([]Recipe, error) {
 				"name": bson.M{"$first": "$name"}, // Keep the recipe name
 				"ingredients": bson.M{
 					"$push": bson.M{
-						"id":       "$ingredient._id",
+						"_id":      "$ingredient._id",
 						"content":  "$ingredient.content",
 						"price":    "$ingredient.price",
 						"quantity": "$ingredients.quantity",
