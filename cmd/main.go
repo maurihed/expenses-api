@@ -32,8 +32,8 @@ func main() {
 
 	services.New(mongoClient)
 
-	log.Printf("Starting server on port 8000")
-	log.Fatal(http.ListenAndServe(":8000", handlers.CreateRouter()))
+	log.Printf("Starting server on port 3000")
+	log.Fatal(http.ListenAndServe(":3000", handlers.CreateRouter()))
 }
 
 // func initServices(mongoClient *mongo.Client) {
