@@ -36,7 +36,10 @@ function oneMonthBefore(date: Date): Date {
 export function creditPeriodPayment(input: CreditPeriodPaymentInput): number {
   const today = startOfUtcDay(input.today);
   const cut = mostRecentCut(input.closingDay, today);
-  const start = oneMonthBefore(today);
+  let start = oneMonthBefore(today);
+  if (start.getTime() >= cut.getTime()) {
+    start = oneMonthBefore(cut);
+  }
 
   const inPeriod = (date: Date) => {
     const d = startOfUtcDay(date);
