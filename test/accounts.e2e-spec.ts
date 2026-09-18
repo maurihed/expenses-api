@@ -107,4 +107,36 @@ describe('Accounts (e2e)', () => {
     request(app.getHttpServer())
       .get('/api/v1/accounts/00000000-0000-4000-8000-000000000000')
       .expect(404));
+
+  it('rechaza balance null en un update con 400 (no 500)', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/accounts')
+      .send({ name: 'Cuenta Null Balance', balance: 100 })
+      .expect(201);
+    createdIds.push(created.body.id);
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/accounts/${created.body.id}`)
+      .send({ balance: null })
+      .expect(400);
+  });
+
+  it('rechaza name null en un update con 400', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/accounts')
+      .send({ name: 'Cuenta Null Name', balance: 100 })
+      .expect(201);
+    createdIds.push(created.body.id);
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/accounts/${created.body.id}`)
+      .send({ name: null })
+      .expect(400);
+  });
+
+  it('rechaza balance null al crear con 400', () =>
+    request(app.getHttpServer())
+      .post('/api/v1/accounts')
+      .send({ name: 'Cuenta Null Create', balance: null })
+      .expect(400));
 });

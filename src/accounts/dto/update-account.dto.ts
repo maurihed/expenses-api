@@ -1,11 +1,11 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsNumber, IsString, ValidateIf } from 'class-validator';
 
 export class UpdateAccountDto {
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsString()
   name?: string;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsNumber()
   balance?: number;
 }
