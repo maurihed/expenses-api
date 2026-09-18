@@ -30,7 +30,6 @@ export class TransactionsService {
       throw new NotFoundException(`Account ${dto.accountId} not found`);
     }
 
-    const categoryId = await this.categories.resolveByName(dto.category);
     const type = dto.type.toUpperCase() as TxType;
     const delta = balanceDelta({
       type,
@@ -40,6 +39,7 @@ export class TransactionsService {
     });
 
     const tx = await this.prisma.$transaction(async (db) => {
+      const categoryId = await this.categories.resolveByName(dto.category, db);
       await db.account.update({
         where: { id: account.id },
         data: { balance: { increment: delta } },
@@ -65,7 +65,7 @@ export class TransactionsService {
     const rows = await this.prisma.transaction.findMany({
       where: { date: { gte: start, lt: end } },
       include: { category: true },
-      orderBy: { date: 'asc' },
+      orderBy: { date: 'desc' },
     });
     return rows.map((tx) => this.toJson(tx));
   }
@@ -89,10 +89,6 @@ export class TransactionsService {
     const type = (dto.type ?? current.type.toLowerCase()) as 'income' | 'expense';
     const newType = type.toUpperCase() as TxType;
     const amount = dto.amount ?? Number(current.amount);
-    const categoryId =
-      dto.category !== undefined
-        ? await this.categories.resolveByName(dto.category)
-        : current.categoryId;
 
     const reverseDelta = balanceDelta({
       type: current.type as TxType,
@@ -108,6 +104,10 @@ export class TransactionsService {
     });
 
     const updated = await this.prisma.$transaction(async (db) => {
+      const categoryId =
+        dto.category !== undefined
+          ? await this.categories.resolveByName(dto.category, db)
+          : current.categoryId;
       await db.account.update({
         where: { id: oldAccount.id },
         data: { balance: { increment: reverseDelta } },

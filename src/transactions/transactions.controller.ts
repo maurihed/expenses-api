@@ -17,17 +17,26 @@ import { TransactionsService } from './transactions.service';
 export class TransactionsController {
   constructor(private readonly transactions: TransactionsService) {}
 
-  private parseIntParam(raw: string, name: string, min: number, max: number): number {
-    const trimmed = raw.trim();
-    const value = Number(trimmed);
-    if (trimmed === '' || !Number.isInteger(value) || value < min || value > max) {
+  private parseIntParam(
+    raw: string | string[],
+    name: string,
+    min: number,
+    max: number,
+  ): number {
+    const value = Array.isArray(raw) ? raw[raw.length - 1] : raw;
+    const trimmed = value.trim();
+    const parsed = Number(trimmed);
+    if (trimmed === '' || !Number.isInteger(parsed) || parsed < min || parsed > max) {
       throw new BadRequestException(`${name} must be an integer between ${min} and ${max}`);
     }
-    return value;
+    return parsed;
   }
 
   @Get()
-  findByMonth(@Query('month') month?: string, @Query('year') year?: string) {
+  findByMonth(
+    @Query('month') month?: string | string[],
+    @Query('year') year?: string | string[],
+  ) {
     const now = new Date();
     const m = month !== undefined ? this.parseIntParam(month, 'month', 0, 11) : now.getMonth();
     const y =
