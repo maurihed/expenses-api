@@ -206,4 +206,104 @@ describe('Transfers (e2e)', () => {
 
     expect(await getBalance(debit)).toBe(5000);
   });
+
+  it('transfiere desde una cuenta de crédito incrementando la deuda', async () => {
+    const credit = await createAccount({
+      name: uniqueName('Credito Origen'),
+      type: 'CREDIT',
+      creditLimit: 10000,
+      balance: 0,
+    });
+    const debit = await createAccount({ name: uniqueName('Debito Destino'), type: 'DEBIT', balance: 1000 });
+    await addDebt(credit, 2000);
+
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({ type: 'transfer', accountId: credit, toAccountId: debit, amount: 1500, date })
+      .expect(201);
+
+    expect(await getBalance(credit)).toBe(3500);
+    expect(await getBalance(debit)).toBe(2500);
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/transactions/${created.body.id}`)
+      .expect(200);
+
+    expect(await getBalance(credit)).toBe(2000);
+    expect(await getBalance(debit)).toBe(1000);
+  });
+
+  it('convierte un expense en transferencia y de vuelta a expense', async () => {
+    const source = await createAccount({
+      name: uniqueName('Conversion A'),
+      type: 'DEBIT',
+      balance: 1000,
+    });
+    const target = await createAccount({
+      name: uniqueName('Conversion B'),
+      type: 'DEBIT',
+      balance: 500,
+    });
+
+    const expense = await request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({ type: 'expense', accountId: source, amount: 200, description: 'Conversion', date })
+      .expect(201);
+
+    expect(await getBalance(source)).toBe(800);
+    expect(await getBalance(target)).toBe(500);
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/transactions/${expense.body.id}`)
+      .send({ type: 'transfer', toAccountId: target })
+      .expect(200);
+
+    expect(await getBalance(source)).toBe(800);
+    expect(await getBalance(target)).toBe(700);
+
+    const asTransfer = await prisma.transaction.findUniqueOrThrow({
+      where: { id: expense.body.id },
+    });
+    expect(asTransfer.type).toBe('TRANSFER');
+    expect(asTransfer.toAccountId).toBe(target);
+    expect(asTransfer.categoryId).toBeNull();
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/transactions/${expense.body.id}`)
+      .send({ type: 'expense' })
+      .expect(200);
+
+    expect(await getBalance(source)).toBe(800);
+    expect(await getBalance(target)).toBe(500);
+
+    const asExpense = await prisma.transaction.findUniqueOrThrow({
+      where: { id: expense.body.id },
+    });
+    expect(asExpense.type).toBe('EXPENSE');
+    expect(asExpense.toAccountId).toBeNull();
+  });
+
+  it('responde 404 al borrar una transferencia cuyo destino ya no existe', async () => {
+    const source = await createAccount({
+      name: uniqueName('Huerfano A'),
+      type: 'DEBIT',
+      balance: 5000,
+    });
+    const target = await createAccount({
+      name: uniqueName('Huerfano B'),
+      type: 'DEBIT',
+      balance: 1000,
+    });
+
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({ type: 'transfer', accountId: source, toAccountId: target, amount: 1000, date })
+      .expect(201);
+
+    await prisma.account.delete({ where: { id: target } });
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/transactions/${created.body.id}`)
+      .expect(404);
+  });
 });

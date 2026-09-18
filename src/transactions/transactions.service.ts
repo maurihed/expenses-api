@@ -263,17 +263,18 @@ export class TransactionsService {
       const destination = await this.prisma.account.findUnique({
         where: { id: current.toAccountId },
       });
-      if (destination) {
-        balanceChanges.push({
-          id: destination.id,
-          delta: balanceDelta({
-            type: 'TRANSFER',
-            accountType: destination.type,
-            role: 'DESTINATION',
-            amount: -Number(current.amount),
-          }),
-        });
+      if (!destination) {
+        throw new NotFoundException(`Account ${current.toAccountId} not found`);
       }
+      balanceChanges.push({
+        id: destination.id,
+        delta: balanceDelta({
+          type: 'TRANSFER',
+          accountType: destination.type,
+          role: 'DESTINATION',
+          amount: -Number(current.amount),
+        }),
+      });
     }
 
     await this.prisma.$transaction(async (db) => {
