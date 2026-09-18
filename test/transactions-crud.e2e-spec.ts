@@ -237,4 +237,31 @@ describe('Transactions CRUD (e2e)', () => {
 
     expect(await getBalance(accountId)).toBe(750);
   });
+
+  it('responde 400 si month está fuera de rango (13)', () =>
+    request(app.getHttpServer())
+      .get('/api/v1/transactions?month=13&year=2026')
+      .expect(400));
+
+  it('responde 400 si month no es un número (abc)', () =>
+    request(app.getHttpServer())
+      .get('/api/v1/transactions?month=abc&year=2026')
+      .expect(400));
+
+  it('acepta month=0 (enero) con 200', () =>
+    request(app.getHttpServer())
+      .get('/api/v1/transactions?month=0&year=2026')
+      .expect(200));
+
+  it('responde 400 si year está fuera de rango o no es numérico', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/transactions?month=0&year=1969')
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v1/transactions?month=0&year=2101')
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v1/transactions?month=0&year=abc')
+      .expect(400);
+  });
 });
