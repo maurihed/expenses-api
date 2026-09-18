@@ -25,6 +25,7 @@ api
 node_modules/
 dist/
 *.log
+*.tsbuildinfo
 
 # NestJS
 coverage/
