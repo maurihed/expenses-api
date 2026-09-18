@@ -66,6 +66,12 @@ Schedule it daily with cron (runs every day at 03:00):
 0 3 * * * cd /path/to/expenses-api && ./scripts/backup.sh >> /var/log/expenses-backup.log 2>&1
 ```
 
+Restore a dump (the container reads `POSTGRES_USER`/`POSTGRES_DB` from its env):
+
+```bash
+gunzip -c backups/expenses-<date>.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+```
+
 Make sure the script is executable:
 
 ```bash

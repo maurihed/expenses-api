@@ -7,6 +7,8 @@ cd "$PROJECT_DIR"
 
 mkdir -p backups
 
+tmp="backups/expenses-$(date +%F).sql.gz.tmp"
+trap 'rm -f "$tmp"' EXIT
 docker compose -f docker-compose.prod.yml exec -T postgres \
-  pg_dump -U "${POSTGRES_USER:-expenses}" "${POSTGRES_DB:-expenses}" \
-  | gzip > "backups/expenses-$(date +%F).sql.gz"
+  sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+  | gzip > "$tmp" && mv "$tmp" "backups/expenses-$(date +%F).sql.gz"
