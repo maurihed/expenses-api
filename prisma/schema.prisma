@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountType {
+  CASH
+  DEBIT
+  CREDIT
+  INVESTMENT
+}
+
+enum Currency {
+  MXN
+  USD
+}
+
+enum TxType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum Scope {
+  JOINT
+  PERSONAL
+}
+
+model Person {
+  id                 String               @id @default(uuid())
+  name               String
+  weeklyAllowance    Decimal              @default(300) @db.Decimal(12, 2)
+  allowanceStartDate DateTime             @db.Date
+  active             Boolean              @default(true)
+  transactions       Transaction[]
+  adjustments        PersonalAdjustment[]
+  createdAt          DateTime             @default(now())
+}
+
+model Category {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  icon         String?
+  color        String?
+  archived     Boolean       @default(false)
+  transactions Transaction[]
+}
+
+model Account {
+  id                  String        @id @default(uuid())
+  name                String
+  type                AccountType   @default(CASH)
+  currency            Currency      @default(MXN)
+  openingBalance      Decimal       @default(0) @db.Decimal(12, 2)
+  balance             Decimal       @default(0) @db.Decimal(12, 2)
+  creditLimit         Decimal?      @db.Decimal(12, 2)
+  statementClosingDay Int?
+  paymentDueDay       Int?
+  archived            Boolean       @default(false)
+  legacyMongoId       String?       @unique
+  transactions        Transaction[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+}
+
+model Transaction {
+  id            String    @id @default(uuid())
+  accountId     String
+  account       Account   @relation(fields: [accountId], references: [id])
+  amount        Decimal   @db.Decimal(12, 2)
+  type          TxType
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id])
+  date          DateTime  @db.Date
+  description   String
+  scope         Scope     @default(JOINT)
+  personId      String?
+  person        Person?   @relation(fields: [personId], references: [id])
+  toAccountId   String?
+  legacyMongoId String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  @@index([accountId, date])
+  @@index([date])
+}
+
+model PersonalAdjustment {
+  id        String   @id @default(uuid())
+  personId  String
+  person    Person   @relation(fields: [personId], references: [id])
+  amount    Decimal  @db.Decimal(12, 2)
+  reason    String
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+}
