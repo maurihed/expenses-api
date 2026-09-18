@@ -49,19 +49,27 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function toUtcDate(value: unknown): Date {
-  if (value instanceof Date) {
-    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+const DEFAULT_TIMEZONE = 'America/Mexico_City';
+
+export function toCalendarDate(
+  value: unknown,
+  timeZone: string = process.env.APP_TIMEZONE || DEFAULT_TIMEZONE,
+): Date {
+  if (typeof value === 'string') {
+    const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (plain) {
+      return new Date(Date.UTC(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3])));
+    }
   }
-  const text = String(value);
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (plain) {
-    return new Date(Date.UTC(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3])));
-  }
-  const parsed = new Date(text);
-  return new Date(
-    Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()),
-  );
+  const instant = value instanceof Date ? value : new Date(String(value));
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, date));
 }
 
 function mapType(value: string): TxType {
@@ -172,7 +180,7 @@ async function main() {
         amount: round2(Number(tx.amount)),
         type: mapType(tx.type),
         categoryId: tx.category ? categoryIdByName.get(tx.category) ?? null : null,
-        date: toUtcDate(tx.date),
+        date: toCalendarDate(tx.date),
         description: tx.description ?? '',
         scope: 'JOINT' as const,
       };
@@ -213,7 +221,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('Migration failed:', error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Migration failed:', error);
+    process.exitCode = 1;
+  });
+}
