@@ -191,4 +191,43 @@ describe('Transactions create (e2e)', () => {
       })
       .expect(400);
   });
+
+  it('rechaza un amount negativo con 400', () =>
+    request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({
+        type: 'expense',
+        accountId: '00000000-0000-4000-8000-000000000000',
+        amount: -250,
+        description: 'Negativo',
+        date: '2026-09-18',
+        category: 'Despensa',
+      })
+      .expect(400));
+
+  it('rechaza una fecha con día inexistente (2026-02-31) con 400', () =>
+    request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({
+        type: 'expense',
+        accountId: '00000000-0000-4000-8000-000000000000',
+        amount: 10,
+        description: 'Día inválido',
+        date: '2026-02-31',
+        category: 'Despensa',
+      })
+      .expect(400));
+
+  it('rechaza una fecha con mes inexistente (2026-13-01) con 400', () =>
+    request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({
+        type: 'expense',
+        accountId: '00000000-0000-4000-8000-000000000000',
+        amount: 10,
+        description: 'Mes inválido',
+        date: '2026-13-01',
+        category: 'Despensa',
+      })
+      .expect(400));
 });
