@@ -28,3 +28,7 @@ dist/
 
 # NestJS
 coverage/
+
+# Database backups
+backups/*
+!backups/.gitkeep
