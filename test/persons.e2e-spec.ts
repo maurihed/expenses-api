@@ -12,6 +12,8 @@ describe('Persons (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   const adjustmentIds: string[] = [];
+  const transactionIds: string[] = [];
+  const accountIds: string[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -23,6 +25,12 @@ describe('Persons (e2e)', () => {
   });
 
   afterAll(async () => {
+    if (transactionIds.length) {
+      await prisma.transaction.deleteMany({ where: { id: { in: transactionIds } } });
+    }
+    if (accountIds.length) {
+      await prisma.account.deleteMany({ where: { id: { in: accountIds } } });
+    }
     if (adjustmentIds.length) {
       await prisma.personalAdjustment.deleteMany({ where: { id: { in: adjustmentIds } } });
     }
@@ -109,6 +117,55 @@ describe('Persons (e2e)', () => {
       .post(`/api/v1/persons/${MAURICIO}/adjustments`)
       .send({ amount: 10, reason: 'x', date: '2026-02-30' })
       .expect(400);
+  });
+
+  it('spent solo suma gastos PERSONAL; el ingreso personal no cuenta como gasto', async () => {
+    const account = await prisma.account.create({
+      data: { name: `E2E Persons ${Date.now()}`, type: 'CASH', balance: 0 },
+    });
+    accountIds.push(account.id);
+
+    const before = await request(app.getHttpServer())
+      .get(`/api/v1/persons/${MAURICIO}/summary`)
+      .expect(200);
+
+    const income = await prisma.transaction.create({
+      data: {
+        accountId: account.id,
+        amount: 1000,
+        type: 'INCOME',
+        date: new Date('2026-01-08T00:00:00.000Z'),
+        description: 'Ingreso personal',
+        scope: 'PERSONAL',
+        personId: MAURICIO,
+      },
+    });
+    transactionIds.push(income.id);
+
+    const afterIncome = await request(app.getHttpServer())
+      .get(`/api/v1/persons/${MAURICIO}/summary`)
+      .expect(200);
+    expect(afterIncome.body.spent).toBe(before.body.spent);
+    expect(afterIncome.body.balance).toBe(before.body.balance);
+
+    const expense = await prisma.transaction.create({
+      data: {
+        accountId: account.id,
+        amount: 250,
+        type: 'EXPENSE',
+        date: new Date('2026-01-09T00:00:00.000Z'),
+        description: 'Gasto personal',
+        scope: 'PERSONAL',
+        personId: MAURICIO,
+      },
+    });
+    transactionIds.push(expense.id);
+
+    const afterExpense = await request(app.getHttpServer())
+      .get(`/api/v1/persons/${MAURICIO}/summary`)
+      .expect(200);
+    expect(afterExpense.body.spent).toBe(before.body.spent + 250);
+    expect(afterExpense.body.balance).toBe(before.body.balance - 250);
   });
 
   it('PUT /persons/:id acepta cambios válidos y rechaza null', async () => {

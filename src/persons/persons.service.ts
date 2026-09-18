@@ -10,6 +10,8 @@ export class PersonsService {
 
   private async budgetFor(person: any, today = new Date()) {
     const [spentAgg, adjustmentAgg] = await Promise.all([
+      // spent cuenta solo transacciones scope = PERSONAL Y type = EXPENSE;
+      // el ingreso personal no es un gasto y por lo tanto no se descuenta.
       this.prisma.transaction.aggregate({
         where: { personId: person.id, scope: 'PERSONAL', type: 'EXPENSE' },
         _sum: { amount: true },
