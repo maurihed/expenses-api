@@ -3,9 +3,9 @@ export type TxType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 export type Role = 'SOURCE' | 'DESTINATION';
 
 export function balanceDelta(input: {
-  type: TxType; accountType: AccountType; role: Role; amount?: number;
+  type: TxType; accountType: AccountType; role: Role; amount: number;
 }): number {
-  const { type, accountType, role, amount = 100 } = input;
+  const { type, accountType, role, amount } = input;
   const credit = accountType === 'CREDIT';
   if (type === 'INCOME') return credit ? -amount : amount;
   if (type === 'EXPENSE') return credit ? amount : -amount;
