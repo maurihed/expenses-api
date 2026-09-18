@@ -4,12 +4,14 @@ import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-const MAURICIO = '11111111-1111-4111-8111-111111111111';
+const PERSON_NAME = 'E2E Scope Person';
+const PERSON_ALLOWANCE_START = '2026-01-04';
 const MISSING_PERSON = '00000000-0000-4000-8000-000000000000';
 
 describe('Transaction scope (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let scopePersonId: string;
   const accountIds: string[] = [];
   const categoryIds: string[] = [];
   const transactionIds: string[] = [];
@@ -24,6 +26,14 @@ describe('Transaction scope (e2e)', () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
     prisma = app.get(PrismaService);
+    const person = await prisma.person.create({
+      data: {
+        name: PERSON_NAME,
+        weeklyAllowance: 300,
+        allowanceStartDate: new Date(`${PERSON_ALLOWANCE_START}T00:00:00.000Z`),
+      },
+    });
+    scopePersonId = person.id;
   });
 
   afterAll(async () => {
@@ -36,6 +46,10 @@ describe('Transaction scope (e2e)', () => {
     }
     if (categoryIds.length) {
       await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
+    }
+    if (scopePersonId) {
+      await prisma.personalAdjustment.deleteMany({ where: { personId: scopePersonId } });
+      await prisma.person.delete({ where: { id: scopePersonId } });
     }
     await app.close();
   });
@@ -64,7 +78,7 @@ describe('Transaction scope (e2e)', () => {
   it('crea un gasto personal y suma su monto al spent de la persona', async () => {
     const accountId = await createAccount('Scope Personal', 1000);
     const category = uniqueCategory('Personal');
-    const before = await summary(MAURICIO);
+    const before = await summary(scopePersonId);
 
     const res = await request(app.getHttpServer())
       .post('/api/v1/transactions')
@@ -76,18 +90,80 @@ describe('Transaction scope (e2e)', () => {
         date: '2032-05-10',
         category,
         scope: 'personal',
-        personId: MAURICIO,
+        personId: scopePersonId,
       })
       .expect(201);
     transactionIds.push(res.body.id);
     await trackCategory(category);
 
-    const after = await summary(MAURICIO);
+    const after = await summary(scopePersonId);
     expect(after.spent - before.spent).toBe(250);
 
     const stored = await prisma.transaction.findUniqueOrThrow({ where: { id: res.body.id } });
     expect(stored.scope).toBe('PERSONAL');
-    expect(stored.personId).toBe(MAURICIO);
+    expect(stored.personId).toBe(scopePersonId);
+  });
+
+  it('spent solo suma gastos PERSONAL de la persona', async () => {
+    const accountId = await createAccount('Scope Semantica', 1000);
+    const jointCategory = uniqueCategory('Semantica Joint');
+    const incomeCategory = uniqueCategory('Semantica Ingreso');
+    const expenseCategory = uniqueCategory('Semantica Gasto');
+
+    const baseline = await summary(scopePersonId);
+
+    const joint = await request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({
+        type: 'expense',
+        accountId,
+        amount: 400,
+        description: 'Gasto joint',
+        date: '2032-08-10',
+        category: jointCategory,
+      })
+      .expect(201);
+    transactionIds.push(joint.body.id);
+
+    const income = await request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({
+        type: 'income',
+        accountId,
+        amount: 500,
+        description: 'Ingreso personal',
+        date: '2032-08-11',
+        category: incomeCategory,
+        scope: 'personal',
+        personId: scopePersonId,
+      })
+      .expect(201);
+    transactionIds.push(income.body.id);
+
+    const afterNonExpense = await summary(scopePersonId);
+    expect(afterNonExpense.spent).toBe(baseline.spent);
+
+    const expense = await request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({
+        type: 'expense',
+        accountId,
+        amount: 250,
+        description: 'Gasto personal',
+        date: '2032-08-12',
+        category: expenseCategory,
+        scope: 'personal',
+        personId: scopePersonId,
+      })
+      .expect(201);
+    transactionIds.push(expense.body.id);
+
+    await trackCategory(jointCategory);
+    await trackCategory(incomeCategory);
+    await trackCategory(expenseCategory);
+
+    const afterExpense = await summary(scopePersonId);
+    expect(afterExpense.spent).toBe(baseline.spent + 250);
   });
 
   it('rechaza un gasto personal sin personId con 400', async () => {
@@ -162,7 +238,7 @@ describe('Transaction scope (e2e)', () => {
         date: '2032-06-10',
         category: personalCategory,
         scope: 'personal',
-        personId: MAURICIO,
+        personId: scopePersonId,
       })
       .expect(201);
     transactionIds.push(personal.body.id);
@@ -193,7 +269,7 @@ describe('Transaction scope (e2e)', () => {
       ['accountId', 'amount', 'category', 'date', 'description', 'id', 'personId', 'scope', 'type'].sort(),
     );
     expect(personalRow.scope).toBe('personal');
-    expect(personalRow.personId).toBe(MAURICIO);
+    expect(personalRow.personId).toBe(scopePersonId);
 
     const jointRow = mine.find((t: any) => t.id === joint.body.id);
     expect(jointRow.scope).toBe('joint');
@@ -220,17 +296,17 @@ describe('Transaction scope (e2e)', () => {
 
     const toPersonal = await request(app.getHttpServer())
       .put(`/api/v1/transactions/${created.body.id}`)
-      .send({ scope: 'personal', personId: MAURICIO })
+      .send({ scope: 'personal', personId: scopePersonId })
       .expect(200);
     expect(toPersonal.body.scope).toBe('personal');
-    expect(toPersonal.body.personId).toBe(MAURICIO);
+    expect(toPersonal.body.personId).toBe(scopePersonId);
 
     const preserved = await request(app.getHttpServer())
       .put(`/api/v1/transactions/${created.body.id}`)
       .send({ description: 'Editado sin tocar scope' })
       .expect(200);
     expect(preserved.body.scope).toBe('personal');
-    expect(preserved.body.personId).toBe(MAURICIO);
+    expect(preserved.body.personId).toBe(scopePersonId);
 
     const toJoint = await request(app.getHttpServer())
       .put(`/api/v1/transactions/${created.body.id}`)
