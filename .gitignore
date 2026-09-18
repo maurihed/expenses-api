@@ -20,3 +20,11 @@ go.work
 
 .env
 api
+
+# Node
+node_modules/
+dist/
+*.log
+
+# NestJS
+coverage/
