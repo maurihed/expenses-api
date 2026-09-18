@@ -29,16 +29,21 @@ pnpm test
 pnpm test:e2e
 ```
 
+E2E tests run against a dedicated `expenses_test` database that is created,
+migrated and seeded automatically from `TEST_DATABASE_URL` (defaults to the
+local `postgresql://expenses:expenses@localhost:5432/expenses_test`). They never
+touch the development/production `expenses` database.
+
 ## Production (Docker)
 
-The production stack is defined in `docker-compose.prod.yml` (`api` + `postgres`,
-with a persistent volume and a PostgreSQL healthcheck). Configuration is read
-from `.env`; `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` are used to
-build the container `DATABASE_URL`, so the API connects to the `postgres`
-service instead of `localhost`.
+The production stack is defined in `docker-compose.prod.yml` (`api` +
+`postgres`, with a persistent volume and a PostgreSQL healthcheck). Configuration
+is read from `.env`: `DATABASE_URL` is passed verbatim to the API container (use
+the `postgres` hostname and a strong password), and `POSTGRES_PASSWORD` is
+required with no weak default.
 
 ```bash
-cp .env.example .env   # set POSTGRES_* and any secrets
+cp .env.example .env   # set DATABASE_URL and a strong POSTGRES_PASSWORD
 docker compose -f docker-compose.prod.yml up -d --build
 curl http://localhost:3000/api/v1/health   # {"status":"ok"}
 ```
@@ -69,7 +74,7 @@ Schedule it daily with cron (runs every day at 03:00):
 Restore a dump (the container reads `POSTGRES_USER`/`POSTGRES_DB` from its env):
 
 ```bash
-gunzip -c backups/expenses-<date>.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+gunzip -c backups/expenses-<date>.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
 ```
 
 Make sure the script is executable:
