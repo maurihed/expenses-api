@@ -9,14 +9,25 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "test": "jest",
-    "test:e2e": "jest --config test/jest-e2e.json"
+    "test:e2e": "jest --config test/jest-e2e.json",
+    "migrate:mongo": "ts-node scripts/migrate-from-mongo.ts"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": { "^.+\\.(t|j)s$": "ts-jest" },
-    "testEnvironment": "node"
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "testRegex": ".*\\.(spec|test)\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "testEnvironment": "node",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/"
+    ]
   },
   "keywords": [],
   "author": "",
@@ -39,6 +50,7 @@
     "@types/node": "^26.6.1",
     "@types/supertest": "^7.2.1",
     "jest": "^30.5.2",
+    "mongodb": "^7.6.0",
     "prisma": "^5.22.0",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.12",
