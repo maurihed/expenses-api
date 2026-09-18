@@ -63,4 +63,12 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsIn(['joint', 'personal'])
+  scope?: 'joint' | 'personal';
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  personId?: string;
 }

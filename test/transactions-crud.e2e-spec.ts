@@ -99,7 +99,7 @@ describe('Transactions CRUD (e2e)', () => {
 
     const exp = mine.find((t: any) => t.type === 'expense');
     expect(Object.keys(exp).sort()).toEqual(
-      ['accountId', 'amount', 'category', 'date', 'description', 'id', 'type'].sort(),
+      ['accountId', 'amount', 'category', 'date', 'description', 'id', 'personId', 'scope', 'type'].sort(),
     );
     expect(exp).toEqual(
       expect.objectContaining({
