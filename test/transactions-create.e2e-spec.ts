@@ -9,6 +9,10 @@ describe('Transactions create (e2e)', () => {
   let prisma: PrismaService;
   const accountIds: string[] = [];
   const categoryIds: string[] = [];
+  let categorySeq = 0;
+
+  const uniqueCategory = (label: string) =>
+    `E2E ${label} ${Date.now()}-${categorySeq++}`;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -41,6 +45,7 @@ describe('Transactions create (e2e)', () => {
 
   it('crea un movimiento expense y ajusta el balance de la cuenta en el servidor', async () => {
     const accountId = await createAccount('Cuenta Movimiento', 1000);
+    const category = uniqueCategory('Categoria');
 
     const res = await request(app.getHttpServer())
       .post('/api/v1/transactions')
@@ -50,7 +55,7 @@ describe('Transactions create (e2e)', () => {
         amount: 250,
         description: 'Despensa semanal',
         date: '2026-09-18',
-        category: 'Despensa',
+        category,
       })
       .expect(201);
 
@@ -71,13 +76,14 @@ describe('Transactions create (e2e)', () => {
     expect(tx.type).toBe('EXPENSE');
     expect(Number(tx.amount)).toBe(250);
     expect(tx.accountId).toBe(accountId);
-    expect(tx.category?.name).toBe('Despensa');
-    categoryIds.push(tx.categoryId as string);
+    expect(tx.category?.name).toBe(category);
+    if (tx.categoryId) categoryIds.push(tx.categoryId);
     expect(tx.date.toISOString()).toBe('2026-09-18T00:00:00.000Z');
   });
 
   it('un income en efectivo incrementa el balance', async () => {
     const accountId = await createAccount('Cuenta Ingreso', 0);
+    const category = uniqueCategory('Ingresos');
 
     await request(app.getHttpServer())
       .post('/api/v1/transactions')
@@ -87,7 +93,7 @@ describe('Transactions create (e2e)', () => {
         amount: 500,
         description: 'Sueldo',
         date: '2026-09-18',
-        category: 'Ingresos',
+        category,
       })
       .expect(201);
 
@@ -96,12 +102,13 @@ describe('Transactions create (e2e)', () => {
       .expect(200);
     expect(get.body.balance).toBe(500);
 
-    const cat = await prisma.category.findUnique({ where: { name: 'Ingresos' } });
+    const cat = await prisma.category.findUnique({ where: { name: category } });
     if (cat) categoryIds.push(cat.id);
   });
 
   it('reutiliza la categoría existente en lugar de duplicarla', async () => {
     const accountId = await createAccount('Cuenta Categoria', 1000);
+    const category = uniqueCategory('Reuso');
 
     const first = await request(app.getHttpServer())
       .post('/api/v1/transactions')
@@ -111,7 +118,7 @@ describe('Transactions create (e2e)', () => {
         amount: 100,
         description: 'Compra 1',
         date: '2026-09-18',
-        category: 'Despensa',
+        category,
       })
       .expect(201);
     const second = await request(app.getHttpServer())
@@ -122,7 +129,7 @@ describe('Transactions create (e2e)', () => {
         amount: 50,
         description: 'Compra 2',
         date: '2026-09-18',
-        category: 'Despensa',
+        category,
       })
       .expect(201);
 
@@ -132,7 +139,7 @@ describe('Transactions create (e2e)', () => {
     ]);
     expect(a.categoryId).toBe(b.categoryId);
 
-    const count = await prisma.category.count({ where: { name: 'Despensa' } });
+    const count = await prisma.category.count({ where: { name: category } });
     expect(count).toBe(1);
 
     const get = await request(app.getHttpServer())
@@ -141,6 +148,36 @@ describe('Transactions create (e2e)', () => {
     expect(get.body.balance).toBe(850);
 
     if (a.categoryId) categoryIds.push(a.categoryId);
+  });
+
+  it('resuelve la misma categoría de forma segura ante creaciones concurrentes', async () => {
+    const accountId = await createAccount('Cuenta Concurrencia', 1000);
+    const category = uniqueCategory('Concurrente');
+
+    await Promise.all(
+      [1, 2, 3].map((n) =>
+        request(app.getHttpServer())
+          .post('/api/v1/transactions')
+          .send({
+            type: 'expense',
+            accountId,
+            amount: 10,
+            description: `Concurrente ${n}`,
+            date: '2026-09-18',
+            category,
+          })
+          .expect(201),
+      ),
+    );
+
+    const count = await prisma.category.count({ where: { name: category } });
+    expect(count).toBe(1);
+
+    const cat = await prisma.category.findUniqueOrThrow({ where: { name: category } });
+    categoryIds.push(cat.id);
+
+    const txs = await prisma.transaction.findMany({ where: { accountId } });
+    expect(new Set(txs.map((t) => t.categoryId))).toEqual(new Set([cat.id]));
   });
 
   it('responde 404 si la cuenta no existe', () =>

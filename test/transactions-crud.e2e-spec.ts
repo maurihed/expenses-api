@@ -9,6 +9,10 @@ describe('Transactions CRUD (e2e)', () => {
   let prisma: PrismaService;
   const accountIds: string[] = [];
   const categoryIds: string[] = [];
+  let categorySeq = 0;
+
+  const uniqueCategory = (label: string) =>
+    `E2E ${label} ${Date.now()}-${categorySeq++}`;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -60,6 +64,8 @@ describe('Transactions CRUD (e2e)', () => {
 
   it('lista por mes 0-indexado, con category como nombre y type en minúsculas', async () => {
     const accountId = await createAccount('Crud Lista Cuenta', 1000);
+    const marchCategory = uniqueCategory('Crud Mar');
+    const aprilCategory = uniqueCategory('Crud Abr');
 
     await createTx({
       type: 'expense',
@@ -67,7 +73,7 @@ describe('Transactions CRUD (e2e)', () => {
       amount: 250,
       description: 'Marzo',
       date: '2031-03-15',
-      category: 'Crud Mar',
+      category: marchCategory,
     });
     await createTx({
       type: 'expense',
@@ -75,7 +81,7 @@ describe('Transactions CRUD (e2e)', () => {
       amount: 100,
       description: 'Abril',
       date: '2031-04-05',
-      category: 'Crud Abr',
+      category: aprilCategory,
     });
     await createTx({
       type: 'income',
@@ -99,7 +105,7 @@ describe('Transactions CRUD (e2e)', () => {
       expect.objectContaining({
         accountId,
         amount: 250,
-        category: 'Crud Mar',
+        category: marchCategory,
         date: '2031-03-15',
         description: 'Marzo',
         type: 'expense',
@@ -116,19 +122,20 @@ describe('Transactions CRUD (e2e)', () => {
     const mineApril = april.body.filter((t: any) => t.accountId === accountId);
     expect(mineApril).toHaveLength(1);
     expect(mineApril[0]).toEqual(
-      expect.objectContaining({ amount: 100, date: '2031-04-05', category: 'Crud Abr' }),
+      expect.objectContaining({ amount: 100, date: '2031-04-05', category: aprilCategory }),
     );
   });
 
   it('edita el importe 250→100 revirtiendo el efecto original (saldo 900)', async () => {
     const accountId = await createAccount('Crud Editar Cuenta', 1000);
+    const category = uniqueCategory('Crud Editar');
     const id = await createTx({
       type: 'expense',
       accountId,
       amount: 250,
       description: 'Editar',
       date: '2026-09-18',
-      category: 'Crud Editar',
+      category,
     });
 
     expect(await getBalance(accountId)).toBe(750);
@@ -141,7 +148,7 @@ describe('Transactions CRUD (e2e)', () => {
         amount: 100,
         description: 'Editar',
         date: '2026-09-18',
-        category: 'Crud Editar',
+        category,
       })
       .expect(200);
     expect(res.body.amount).toBe(100);
@@ -151,19 +158,20 @@ describe('Transactions CRUD (e2e)', () => {
     const stored = await prisma.transaction.findUniqueOrThrow({ where: { id } });
     expect(Number(stored.amount)).toBe(100);
 
-    const cat = await prisma.category.findUnique({ where: { name: 'Crud Editar' } });
+    const cat = await prisma.category.findUnique({ where: { name: category } });
     if (cat) categoryIds.push(cat.id);
   });
 
   it('borra el movimiento restaurando el saldo a 1000', async () => {
     const accountId = await createAccount('Crud Borrar Cuenta', 1000);
+    const category = uniqueCategory('Crud Borrar');
     const id = await createTx({
       type: 'expense',
       accountId,
       amount: 250,
       description: 'Borrar',
       date: '2026-09-18',
-      category: 'Crud Borrar',
+      category,
     });
 
     expect(await getBalance(accountId)).toBe(750);
@@ -173,20 +181,21 @@ describe('Transactions CRUD (e2e)', () => {
     expect(await getBalance(accountId)).toBe(1000);
     expect(await prisma.transaction.findUnique({ where: { id } })).toBeNull();
 
-    const cat = await prisma.category.findUnique({ where: { name: 'Crud Borrar' } });
+    const cat = await prisma.category.findUnique({ where: { name: category } });
     if (cat) categoryIds.push(cat.id);
   });
 
   it('al cambiar de cuenta revierte en la original y aplica en la nueva', async () => {
     const from = await createAccount('Crud Mover Origen', 1000);
     const to = await createAccount('Crud Mover Destino', 500);
+    const category = uniqueCategory('Crud Mover');
     const id = await createTx({
       type: 'expense',
       accountId: from,
       amount: 200,
       description: 'Mover',
       date: '2026-09-18',
-      category: 'Crud Mover',
+      category,
     });
 
     expect(await getBalance(from)).toBe(800);
@@ -200,14 +209,14 @@ describe('Transactions CRUD (e2e)', () => {
         amount: 200,
         description: 'Mover',
         date: '2026-09-18',
-        category: 'Crud Mover',
+        category,
       })
       .expect(200);
 
     expect(await getBalance(from)).toBe(1000);
     expect(await getBalance(to)).toBe(300);
 
-    const cat = await prisma.category.findUnique({ where: { name: 'Crud Mover' } });
+    const cat = await prisma.category.findUnique({ where: { name: category } });
     if (cat) categoryIds.push(cat.id);
   });
 
@@ -251,6 +260,16 @@ describe('Transactions CRUD (e2e)', () => {
   it('acepta month=0 (enero) con 200', () =>
     request(app.getHttpServer())
       .get('/api/v1/transactions?month=0&year=2026')
+      .expect(200));
+
+  it('responde 400 (no 500) si month viene duplicado y el último valor es inválido', () =>
+    request(app.getHttpServer())
+      .get('/api/v1/transactions?month=0&month=13&year=2026')
+      .expect(400));
+
+  it('acepta month duplicado válido tomando el último valor', () =>
+    request(app.getHttpServer())
+      .get('/api/v1/transactions?month=13&month=0&year=2026')
       .expect(200));
 
   it('responde 400 si year está fuera de rango o no es numérico', async () => {
