@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { AccountsService } from './accounts.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
@@ -8,8 +8,13 @@ export class AccountsController {
   constructor(private readonly accounts: AccountsService) {}
 
   @Get()
-  findAll() {
-    return this.accounts.findAll();
+  findAll(@Query('includeArchived') includeArchived?: string) {
+    return this.accounts.findAll(includeArchived === 'true');
+  }
+
+  @Get(':id/credit-summary')
+  creditSummary(@Param('id') id: string) {
+    return this.accounts.creditSummary(id);
   }
 
   @Get(':id')
@@ -25,5 +30,10 @@ export class AccountsController {
   @Put(':id')
   update(@Param('id') id: string, @Body() dto: UpdateAccountDto) {
     return this.accounts.update(id, dto);
+  }
+
+  @Delete(':id')
+  archive(@Param('id') id: string) {
+    return this.accounts.archive(id);
   }
 }
