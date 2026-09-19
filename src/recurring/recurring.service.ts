@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AccountType, balanceDelta, TxType } from '../domain/balance';
+import { computeInterest, InterestTier } from '../domain/interest';
 import { nextOccurrence, RecurringFrequency } from '../domain/recurring';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRecurringRuleDto, RecurringScopeValue, RecurringTypeValue } from './dto/create-recurring-rule.dto';
@@ -36,6 +38,153 @@ export class RecurringService {
 
   private previousDay(date: Date): Date {
     return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - 1));
+  }
+
+  private startOfUtcDay(date: Date): Date {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  }
+
+  private parseTiers(value: Prisma.JsonValue | null): InterestTier[] {
+    return Array.isArray(value) ? (value as unknown as InterestTier[]) : [];
+  }
+
+  /**
+   * Materializes a single occurrence. Returns the amount recorded and the
+   * created transaction id (null when no transaction was needed, e.g. an
+   * INTEREST occurrence whose computed interest is 0).
+   */
+  private async materialize(
+    db: Prisma.TransactionClient,
+    rule: {
+      id: string;
+      name: string;
+      type: string;
+      accountId: string;
+      categoryId: string | null;
+      scope: any;
+      personId: string | null;
+      amount: Prisma.Decimal | null;
+      interestTiers: Prisma.JsonValue | null;
+    },
+    account: { id: string; type: string; balance: Prisma.Decimal },
+    date: Date,
+  ): Promise<{ amount: number; transactionId: string | null }> {
+    let amount: number;
+    let txType: TxType;
+
+    if (rule.type === 'INTEREST') {
+      amount = computeInterest(Number(account.balance), this.parseTiers(rule.interestTiers));
+      if (amount <= 0) {
+        return { amount: 0, transactionId: null };
+      }
+      txType = 'INCOME';
+    } else if (rule.type === 'INCOME') {
+      amount = Number(rule.amount);
+      txType = 'INCOME';
+    } else {
+      amount = Number(rule.amount);
+      txType = 'EXPENSE';
+    }
+
+    const delta = balanceDelta({
+      type: txType,
+      accountType: account.type as AccountType,
+      role: 'SOURCE',
+      amount,
+    });
+
+    await db.account.update({
+      where: { id: account.id },
+      data: { balance: { increment: delta } },
+    });
+
+    const transaction = await db.transaction.create({
+      data: {
+        accountId: rule.accountId,
+        amount,
+        type: txType,
+        categoryId: rule.categoryId,
+        date,
+        description: rule.name,
+        scope: rule.scope,
+        personId: rule.personId,
+      },
+    });
+
+    return { amount, transactionId: transaction.id };
+  }
+
+  /**
+   * Idempotently materializes every active rule occurrence due on or before
+   * `asOf` (normalized to a UTC calendar day). Each rule runs inside its own
+   * `$transaction` so a partial failure cannot leave balances, transactions
+   * and occurrences out of sync. Re-running is safe: the unique
+   * `(ruleId, date)` constraint on `RecurringOccurrence` is checked before
+   * writing, and existing occurrences are counted as `skipped`.
+   */
+  async runDue(asOf: Date): Promise<{ created: number; skipped: number }> {
+    const asOfDay = this.startOfUtcDay(asOf);
+    const rules = await this.prisma.recurringRule.findMany({
+      where: { active: true, nextRunDate: { lte: asOfDay } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const rule of rules) {
+      const result = await this.prisma.$transaction(async (db) => {
+        let ruleCreated = 0;
+        let ruleSkipped = 0;
+        let nextRunDate = rule.nextRunDate;
+
+        while (
+          nextRunDate.getTime() <= asOfDay.getTime() &&
+          (rule.endDate === null || nextRunDate.getTime() <= rule.endDate.getTime())
+        ) {
+          const occurrenceDate = nextRunDate;
+          const existing = await db.recurringOccurrence.findUnique({
+            where: { ruleId_date: { ruleId: rule.id, date: occurrenceDate } },
+          });
+
+          if (existing) {
+            ruleSkipped += 1;
+          } else {
+            const account = await db.account.findUniqueOrThrow({
+              where: { id: rule.accountId },
+            });
+            const { amount, transactionId } = await this.materialize(
+              db,
+              rule,
+              account,
+              occurrenceDate,
+            );
+            await db.recurringOccurrence.create({
+              data: { ruleId: rule.id, date: occurrenceDate, amount, transactionId },
+            });
+            ruleCreated += 1;
+          }
+
+          nextRunDate = nextOccurrence(
+            rule.frequency.toLowerCase() as RecurringFrequency,
+            occurrenceDate,
+            rule.dayOfMonth,
+            rule.dayOfWeek,
+          );
+          await db.recurringRule.update({
+            where: { id: rule.id },
+            data: { nextRunDate, lastRunDate: occurrenceDate },
+          });
+        }
+
+        return { created: ruleCreated, skipped: ruleSkipped };
+      });
+
+      created += result.created;
+      skipped += result.skipped;
+    }
+
+    return { created, skipped };
   }
 
   private parseInterestTiers(value: unknown): InterestTierInput[] {

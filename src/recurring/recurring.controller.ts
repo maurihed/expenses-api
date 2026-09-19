@@ -17,6 +17,11 @@ export class RecurringController {
     return this.recurring.create(dto);
   }
 
+  @Post('run')
+  run() {
+    return this.recurring.runDue(new Date());
+  }
+
   @Put(':id')
   update(@Param('id') id: string, @Body() dto: UpdateRecurringRuleDto) {
     return this.recurring.update(id, dto);

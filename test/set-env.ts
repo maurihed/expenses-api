@@ -3,5 +3,6 @@ const DEFAULT_TEST_DATABASE_URL =
 
 const testUrl = process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_DATABASE_URL;
 
+process.env.NODE_ENV = 'test';
 process.env.TEST_DATABASE_URL = testUrl;
 process.env.DATABASE_URL = testUrl;
