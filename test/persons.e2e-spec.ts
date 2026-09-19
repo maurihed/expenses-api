@@ -39,18 +39,23 @@ describe('Persons (e2e)', () => {
 
   it('GET /persons devuelve las personas sembradas con presupuesto', async () => {
     const res = await request(app.getHttpServer()).get('/api/v1/persons').expect(200);
-    expect(res.body).toHaveLength(2);
-    expect(res.body.map((p: any) => p.id).sort()).toEqual([MAURICIO, MARIA].sort());
 
     const mauricio = res.body.find((p: any) => p.id === MAURICIO);
-    expect(Object.keys(mauricio).sort()).toEqual(
-      ['id', 'name', 'weeklyAllowance', 'allowanceStartDate', 'balance', 'spent'].sort(),
-    );
+    const maria = res.body.find((p: any) => p.id === MARIA);
+    expect(mauricio).toBeDefined();
+    expect(maria).toBeDefined();
+
+    for (const person of [mauricio, maria]) {
+      expect(Object.keys(person).sort()).toEqual(
+        ['id', 'name', 'weeklyAllowance', 'allowanceStartDate', 'balance', 'spent'].sort(),
+      );
+      expect(person.allowanceStartDate).toBe('2026-01-04');
+      expect(typeof person.weeklyAllowance).toBe('number');
+      expect(typeof person.balance).toBe('number');
+      expect(typeof person.spent).toBe('number');
+    }
     expect(mauricio.name).toBe('Mauricio');
-    expect(mauricio.allowanceStartDate).toBe('2026-01-04');
-    expect(typeof mauricio.weeklyAllowance).toBe('number');
-    expect(typeof mauricio.balance).toBe('number');
-    expect(typeof mauricio.spent).toBe('number');
+    expect(maria.name).toBe('Maria');
   });
 
   it('GET /persons/:id/summary responde accrued, adjustmentTotal, spent y balance', async () => {

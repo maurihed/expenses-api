@@ -37,7 +37,23 @@ describe('Accounts credit (e2e)', () => {
 
   afterAll(async () => {
     if (accountIds.length) {
-      await prisma.transaction.deleteMany({ where: { accountId: { in: accountIds } } });
+      const txs = await prisma.transaction.findMany({
+        where: { accountId: { in: accountIds } },
+        select: { id: true },
+      });
+      const txIds = txs.map((t) => t.id);
+      if (txIds.length) {
+        const plans = await prisma.installmentPlan.findMany({
+          where: { transactionId: { in: txIds } },
+          select: { id: true },
+        });
+        const planIds = plans.map((p) => p.id);
+        if (planIds.length) {
+          await prisma.installment.deleteMany({ where: { planId: { in: planIds } } });
+          await prisma.installmentPlan.deleteMany({ where: { id: { in: planIds } } });
+        }
+        await prisma.transaction.deleteMany({ where: { id: { in: txIds } } });
+      }
       await prisma.account.deleteMany({ where: { id: { in: accountIds } } });
     }
     if (categoryIds.length) {
@@ -85,7 +101,12 @@ describe('Accounts credit (e2e)', () => {
     const summary = await request(app.getHttpServer())
       .get(`/api/v1/accounts/${accountId}/credit-summary`)
       .expect(200);
-    expect(summary.body).toEqual({ totalDebt: 1500, periodPayment: 1500, available: 8500 });
+    expect(summary.body).toEqual({
+      totalDebt: 1500,
+      periodPayment: 1500,
+      available: 8500,
+      msiCommitted: 0,
+    });
 
     await request(app.getHttpServer())
       .post('/api/v1/transactions')
@@ -102,7 +123,12 @@ describe('Accounts credit (e2e)', () => {
     const afterPayment = await request(app.getHttpServer())
       .get(`/api/v1/accounts/${accountId}/credit-summary`)
       .expect(200);
-    expect(afterPayment.body).toEqual({ totalDebt: 1000, periodPayment: 1000, available: 9000 });
+    expect(afterPayment.body).toEqual({
+      totalDebt: 1000,
+      periodPayment: 1000,
+      available: 9000,
+      msiCommitted: 0,
+    });
 
     const category = await prisma.category.findUniqueOrThrow({ where: { name: `${label} Compras` } });
     categoryIds.push(category.id);
@@ -130,6 +156,60 @@ describe('Accounts credit (e2e)', () => {
 
     const stored = await prisma.transaction.count({ where: { accountId } });
     expect(stored).toBe(2);
+  });
+
+  it('cuenta solo la mensualidad MSI vencida en el periodo y las futuras en msiCommitted', async () => {
+    const created = await createAccount({
+      name: `${label} MSI`,
+      type: 'CREDIT',
+      currency: 'MXN',
+      creditLimit: 10000,
+      statementClosingDay: closingDay,
+      paymentDueDay: 5,
+      balance: 0,
+    });
+    const accountId = created.id as string;
+
+    await request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({
+        type: 'expense',
+        accountId,
+        amount: 300,
+        description: 'Cargo normal',
+        date: today,
+        category: `${label} Normal`,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/transactions')
+      .send({
+        type: 'expense',
+        accountId,
+        amount: 1200,
+        description: 'Compra MSI',
+        date: today,
+        category: `${label} MSI`,
+        installments: 3,
+      })
+      .expect(201);
+
+    const categories = await prisma.category.findMany({
+      where: { name: { in: [`${label} Normal`, `${label} MSI`] } },
+    });
+    categoryIds.push(...categories.map((c) => c.id));
+
+    const summary = await request(app.getHttpServer())
+      .get(`/api/v1/accounts/${accountId}/credit-summary`)
+      .expect(200);
+
+    expect(summary.body).toEqual({
+      totalDebt: 1500,
+      periodPayment: 700,
+      available: 8500,
+      msiCommitted: 800,
+    });
   });
 
   it('responde 400 en credit-summary para una cuenta que no es de crédito', async () => {

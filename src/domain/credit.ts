@@ -33,21 +33,42 @@ function oneMonthBefore(date: Date): Date {
   return dateWithClampedDay(date.getUTCFullYear(), date.getUTCMonth() - 1, date.getUTCDate());
 }
 
-export function creditPeriodPayment(input: CreditPeriodPaymentInput): number {
-  const today = startOfUtcDay(input.today);
-  const cut = mostRecentCut(input.closingDay, today);
-  let start = oneMonthBefore(today);
+export interface CreditPeriodRange {
+  start: Date;
+  cut: Date;
+}
+
+export function creditPeriodRange(closingDay: number, today: Date): CreditPeriodRange {
+  const day = startOfUtcDay(today);
+  const cut = mostRecentCut(closingDay, day);
+  let start = oneMonthBefore(day);
   if (start.getTime() >= cut.getTime()) {
     start = oneMonthBefore(cut);
   }
+  return { start, cut };
+}
 
-  const inPeriod = (date: Date) => {
-    const d = startOfUtcDay(date);
-    return d.getTime() > start.getTime() && d.getTime() <= cut.getTime();
-  };
+export function isInCreditPeriod(date: Date, range: CreditPeriodRange): boolean {
+  const d = startOfUtcDay(date);
+  return d.getTime() > range.start.getTime() && d.getTime() <= range.cut.getTime();
+}
 
-  const charges = input.charges.reduce((sum, c) => (inPeriod(c.date) ? sum + c.amount : sum), 0);
-  const payments = input.payments.reduce((sum, p) => (inPeriod(p.date) ? sum + p.amount : sum), 0);
+export function isAfterCreditPeriod(date: Date, range: CreditPeriodRange): boolean {
+  const d = startOfUtcDay(date);
+  return d.getTime() > range.cut.getTime();
+}
+
+export function creditPeriodPayment(input: CreditPeriodPaymentInput): number {
+  const range = creditPeriodRange(input.closingDay, input.today);
+
+  const charges = input.charges.reduce(
+    (sum, c) => (isInCreditPeriod(c.date, range) ? sum + c.amount : sum),
+    0,
+  );
+  const payments = input.payments.reduce(
+    (sum, p) => (isInCreditPeriod(p.date, range) ? sum + p.amount : sum),
+    0,
+  );
 
   return Math.max(0, charges - payments);
 }

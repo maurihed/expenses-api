@@ -266,7 +266,7 @@ describe('Transaction scope (e2e)', () => {
 
     const personalRow = mine.find((t: any) => t.id === personal.body.id);
     expect(Object.keys(personalRow).sort()).toEqual(
-      ['accountId', 'amount', 'category', 'date', 'description', 'id', 'personId', 'scope', 'type'].sort(),
+      ['accountId', 'amount', 'category', 'date', 'description', 'id', 'installments', 'personId', 'scope', 'type'].sort(),
     );
     expect(personalRow.scope).toBe('personal');
     expect(personalRow.personId).toBe(scopePersonId);

@@ -4,6 +4,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { HealthModule } from './health/health.module';
 import { PersonsModule } from './persons/persons.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RecurringModule } from './recurring/recurring.module';
 import { TransactionsModule } from './transactions/transactions.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     CategoriesModule,
     TransactionsModule,
     PersonsModule,
+    RecurringModule,
   ],
 })
 export class AppModule {}
