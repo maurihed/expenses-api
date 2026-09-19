@@ -226,3 +226,14 @@ model DebtPayment {
   createdAt     DateTime     @default(now())
   @@index([debtId])
 }
+
+model Budget {
+  id        String   @id @default(uuid())
+  year      Int
+  month     Int
+  amount    Decimal  @db.Decimal(12, 2)
+  currency  Currency @default(MXN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([year, month])
+}
