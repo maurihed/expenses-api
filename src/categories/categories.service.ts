@@ -25,18 +25,26 @@ export class CategoriesService {
     throw error;
   }
 
-  async resolveByName(
-    name?: string | null,
-    client: Prisma.TransactionClient = this.prisma,
-  ): Promise<string | null> {
+  async resolveByName(name?: string | null): Promise<string | null> {
     if (!name) return null;
-    const category = await client.category.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-      select: { id: true },
-    });
-    return category.id;
+    try {
+      const category = await this.prisma.category.upsert({
+        where: { name },
+        update: {},
+        create: { name },
+        select: { id: true },
+      });
+      return category.id;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existing = await this.prisma.category.findUnique({
+          where: { name },
+          select: { id: true },
+        });
+        if (existing) return existing.id;
+      }
+      throw error;
+    }
   }
 
   async findAll(includeArchived = false) {

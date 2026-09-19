@@ -170,8 +170,9 @@ export class TransactionsService {
       amount: dto.amount,
     });
 
+    const categoryId = await this.categories.resolveByName(dto.category);
+
     const tx = await this.prisma.$transaction(async (db) => {
-      const categoryId = await this.categories.resolveByName(dto.category, db);
       await db.account.update({
         where: { id: account.id },
         data: { balance: { increment: delta } },
@@ -316,13 +317,14 @@ export class TransactionsService {
       });
     }
 
+    const categoryId =
+      newType === 'TRANSFER'
+        ? null
+        : dto.category !== undefined
+          ? await this.categories.resolveByName(dto.category)
+          : current.categoryId;
+
     const updated = await this.prisma.$transaction(async (db) => {
-      const categoryId =
-        newType === 'TRANSFER'
-          ? null
-          : dto.category !== undefined
-            ? await this.categories.resolveByName(dto.category, db)
-            : current.categoryId;
       for (const change of balanceChanges) {
         await db.account.update({
           where: { id: change.id },
