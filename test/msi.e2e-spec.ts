@@ -131,7 +131,7 @@ describe('MSI installments (e2e)', () => {
     expect(found.amount).toBe(1000);
   });
 
-  it('regenera el plan al cambiar installments y lo elimina al omitirlo', async () => {
+  it('regenera el plan al cambiar installments y lo conserva en ediciones no relacionadas', async () => {
     const accountId = await createCredit('MSI Editar');
     const txId = await createMsi(accountId);
 
@@ -150,14 +150,51 @@ describe('MSI installments (e2e)', () => {
 
     await request(app.getHttpServer())
       .put(`/api/v1/transactions/${txId}`)
-      .send({ amount: 500 })
+      .send({ description: 'editada' })
+      .expect(200);
+
+    const preserved = await prisma.installmentPlan.findMany({
+      where: { transactionId: txId },
+      include: { installments_: true },
+    });
+    expect(preserved).toHaveLength(1);
+    expect(preserved[0].installments).toBe(6);
+    expect(preserved[0].installments_).toHaveLength(6);
+    const preservedTx = await prisma.transaction.findUniqueOrThrow({ where: { id: txId } });
+    expect(preservedTx.installments).toBe(6);
+    expect(preservedTx.description).toBe('editada');
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/transactions/${txId}`)
+      .send({ installments: null })
       .expect(200);
 
     const removed = await prisma.installmentPlan.findMany({ where: { transactionId: txId } });
     expect(removed).toHaveLength(0);
     const tx = await prisma.transaction.findUniqueOrThrow({ where: { id: txId } });
     expect(tx.installments).toBeNull();
+  });
+
+  it('regenera el plan cuando cambia el monto y no se envían installments', async () => {
+    const accountId = await createCredit('MSI Monto');
+    const txId = await createMsi(accountId);
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/transactions/${txId}`)
+      .send({ amount: 500 })
+      .expect(200);
+
+    const plan = await prisma.installmentPlan.findUniqueOrThrow({
+      where: { transactionId: txId },
+      include: { installments_: true },
+    });
+    expect(plan.installments).toBe(3);
+    expect(plan.installments_).toHaveLength(3);
+    expect(Number(plan.totalAmount)).toBe(500);
     expect(await balanceOf(accountId)).toBe(500);
+
+    const tx = await prisma.transaction.findUniqueOrThrow({ where: { id: txId } });
+    expect(tx.installments).toBe(3);
   });
 
   it('borra el plan y las mensualidades al eliminar el movimiento', async () => {

@@ -228,7 +228,8 @@ export class TransactionsService {
     const newType = (dto.type ?? current.type.toLowerCase()).toUpperCase() as TxType;
     const amount = dto.amount ?? Number(current.amount);
 
-    const installments = dto.installments ?? null;
+    const installments =
+      dto.installments === undefined ? current.installments : dto.installments;
     if (installments !== null) {
       if (newType !== 'EXPENSE') {
         throw new BadRequestException('installments are only allowed for expense transactions');
@@ -237,6 +238,14 @@ export class TransactionsService {
         throw new BadRequestException('installments are only allowed on CREDIT accounts');
       }
     }
+
+    const newDate =
+      dto.date !== undefined ? new Date(`${dto.date}T00:00:00.000Z`) : current.date;
+    const shouldRegenerate =
+      current.installments !== installments ||
+      Number(current.amount) !== amount ||
+      current.accountId !== account.id ||
+      current.date.getTime() !== newDate.getTime();
 
     const oldSource =
       account.id === current.accountId
@@ -323,7 +332,7 @@ export class TransactionsService {
       const existingPlan = await db.installmentPlan.findUnique({
         where: { transactionId: id },
       });
-      if (existingPlan) {
+      if (existingPlan && (installments === null || shouldRegenerate)) {
         await db.installment.deleteMany({ where: { planId: existingPlan.id } });
         await db.installmentPlan.delete({ where: { id: existingPlan.id } });
       }
@@ -335,10 +344,7 @@ export class TransactionsService {
           type: newType,
           toAccountId: newType === 'TRANSFER' ? newToAccountId : null,
           categoryId,
-          date:
-            dto.date !== undefined
-              ? new Date(`${dto.date}T00:00:00.000Z`)
-              : current.date,
+          date: newDate,
           description: dto.description ?? current.description,
           scope,
           personId,
@@ -346,7 +352,7 @@ export class TransactionsService {
         },
         include: { category: true },
       });
-      if (installments !== null) {
+      if (installments !== null && (!existingPlan || shouldRegenerate)) {
         await this.createInstallmentPlan(db, saved, amount, installments);
       }
       return saved;
