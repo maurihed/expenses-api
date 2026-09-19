@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CategoriesService } from '../categories/categories.service';
-import { balanceDelta, TxType } from '../domain/balance';
+import { AccountType, balanceDelta, TxType } from '../domain/balance';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -13,7 +13,7 @@ export class TransactionsService {
   ) {}
 
   private toJson(tx: any) {
-    return {
+    const base = {
       id: tx.id,
       accountId: tx.accountId,
       amount: Number(tx.amount),
@@ -21,7 +21,48 @@ export class TransactionsService {
       date: tx.date.toISOString().slice(0, 10),
       description: tx.description,
       type: tx.type.toLowerCase(),
+      scope: tx.scope.toLowerCase(),
+      personId: tx.personId ?? null,
     };
+    return tx.type === 'TRANSFER' ? { ...base, toAccountId: tx.toAccountId ?? null } : base;
+  }
+
+  private async resolveScope(
+    requested: { scope?: 'joint' | 'personal'; personId?: string },
+    current?: { scope: string; personId: string | null },
+  ): Promise<{ scope: 'JOINT' | 'PERSONAL'; personId: string | null }> {
+    const scope = requested.scope ?? current?.scope.toLowerCase() ?? 'joint';
+    if (scope !== 'personal') {
+      return { scope: 'JOINT', personId: null };
+    }
+    const personId =
+      requested.personId !== undefined ? requested.personId : (current?.personId ?? null);
+    if (!personId) {
+      throw new BadRequestException('personId is required when scope is personal');
+    }
+    const person = await this.prisma.person.findUnique({ where: { id: personId } });
+    if (!person) {
+      throw new NotFoundException(`Person ${personId} not found`);
+    }
+    return { scope: 'PERSONAL', personId };
+  }
+
+  private async resolveDestination(
+    toAccountId: string | undefined,
+    sourceAccountId: string,
+    { allowArchived = false }: { allowArchived?: boolean } = {},
+  ) {
+    if (!toAccountId) {
+      throw new BadRequestException('toAccountId is required for transfers');
+    }
+    if (toAccountId === sourceAccountId) {
+      throw new BadRequestException('toAccountId must be different from accountId');
+    }
+    const destination = await this.prisma.account.findUnique({ where: { id: toAccountId } });
+    if (!destination || (!allowArchived && destination.archived)) {
+      throw new BadRequestException(`Account ${toAccountId} not found`);
+    }
+    return destination;
   }
 
   async create(dto: CreateTransactionDto) {
@@ -31,6 +72,49 @@ export class TransactionsService {
     }
 
     const type = dto.type.toUpperCase() as TxType;
+    const { scope, personId } = await this.resolveScope(dto);
+
+    if (type === 'TRANSFER') {
+      const destination = await this.resolveDestination(dto.toAccountId, account.id);
+      const sourceDelta = balanceDelta({
+        type,
+        accountType: account.type,
+        role: 'SOURCE',
+        amount: dto.amount,
+      });
+      const destinationDelta = balanceDelta({
+        type,
+        accountType: destination.type,
+        role: 'DESTINATION',
+        amount: dto.amount,
+      });
+
+      const tx = await this.prisma.$transaction(async (db) => {
+        await db.account.update({
+          where: { id: account.id },
+          data: { balance: { increment: sourceDelta } },
+        });
+        await db.account.update({
+          where: { id: destination.id },
+          data: { balance: { increment: destinationDelta } },
+        });
+        return db.transaction.create({
+          data: {
+            accountId: account.id,
+            toAccountId: destination.id,
+            amount: dto.amount,
+            type,
+            date: new Date(`${dto.date}T00:00:00.000Z`),
+            description: dto.description ?? '',
+            scope,
+            personId,
+          },
+        });
+      });
+
+      return { id: tx.id };
+    }
+
     const delta = balanceDelta({
       type,
       accountType: account.type,
@@ -51,7 +135,9 @@ export class TransactionsService {
           type,
           categoryId,
           date: new Date(`${dto.date}T00:00:00.000Z`),
-          description: dto.description,
+          description: dto.description ?? '',
+          scope,
+          personId,
         },
       });
     });
@@ -74,60 +160,118 @@ export class TransactionsService {
     const current = await this.prisma.transaction.findUnique({ where: { id } });
     if (!current) throw new NotFoundException(`Transaction ${id} not found`);
 
+    const { scope, personId } = await this.resolveScope(dto, {
+      scope: current.scope,
+      personId: current.personId,
+    });
+
     const accountId = dto.accountId ?? current.accountId;
     const account = await this.prisma.account.findUnique({ where: { id: accountId } });
-    if (!account || account.archived) {
+    if (!account) {
       throw new NotFoundException(`Account ${accountId} not found`);
     }
 
-    const oldAccount =
+    const currentType = current.type as TxType;
+    const newType = (dto.type ?? current.type.toLowerCase()).toUpperCase() as TxType;
+    const amount = dto.amount ?? Number(current.amount);
+
+    const oldSource =
       account.id === current.accountId
         ? account
         : await this.prisma.account.findUnique({ where: { id: current.accountId } });
-    if (!oldAccount) throw new NotFoundException(`Account ${current.accountId} not found`);
+    if (!oldSource) throw new NotFoundException(`Account ${current.accountId} not found`);
 
-    const type = (dto.type ?? current.type.toLowerCase()) as 'income' | 'expense';
-    const newType = type.toUpperCase() as TxType;
-    const amount = dto.amount ?? Number(current.amount);
+    const currentToAccountId = currentType === 'TRANSFER' ? current.toAccountId : null;
+    const oldDestination = currentToAccountId
+      ? await this.prisma.account.findUnique({ where: { id: currentToAccountId } })
+      : null;
+    if (currentToAccountId && !oldDestination) {
+      throw new NotFoundException(`Account ${currentToAccountId} not found`);
+    }
 
-    const reverseDelta = balanceDelta({
-      type: current.type as TxType,
-      accountType: oldAccount.type,
-      role: 'SOURCE',
-      amount: -Number(current.amount),
+    let newToAccountId: string | null = null;
+    let newDestination: { id: string; type: AccountType } | null = null;
+    if (newType === 'TRANSFER') {
+      const resolved = await this.resolveDestination(
+        dto.toAccountId ?? currentToAccountId ?? undefined,
+        account.id,
+        { allowArchived: true },
+      );
+      newToAccountId = resolved.id;
+      newDestination = resolved;
+    }
+
+    const balanceChanges: { id: string; delta: number }[] = [
+      {
+        id: current.accountId,
+        delta: balanceDelta({
+          type: currentType,
+          accountType: oldSource.type,
+          role: 'SOURCE',
+          amount: -Number(current.amount),
+        }),
+      },
+    ];
+    if (oldDestination && currentToAccountId) {
+      balanceChanges.push({
+        id: currentToAccountId,
+        delta: balanceDelta({
+          type: 'TRANSFER',
+          accountType: oldDestination.type,
+          role: 'DESTINATION',
+          amount: -Number(current.amount),
+        }),
+      });
+    }
+    balanceChanges.push({
+      id: account.id,
+      delta: balanceDelta({
+        type: newType,
+        accountType: account.type,
+        role: 'SOURCE',
+        amount,
+      }),
     });
-    const applyDelta = balanceDelta({
-      type: newType,
-      accountType: account.type,
-      role: 'SOURCE',
-      amount,
-    });
+    if (newDestination && newToAccountId) {
+      balanceChanges.push({
+        id: newToAccountId,
+        delta: balanceDelta({
+          type: 'TRANSFER',
+          accountType: newDestination.type,
+          role: 'DESTINATION',
+          amount,
+        }),
+      });
+    }
 
     const updated = await this.prisma.$transaction(async (db) => {
       const categoryId =
-        dto.category !== undefined
-          ? await this.categories.resolveByName(dto.category, db)
-          : current.categoryId;
-      await db.account.update({
-        where: { id: oldAccount.id },
-        data: { balance: { increment: reverseDelta } },
-      });
-      await db.account.update({
-        where: { id: account.id },
-        data: { balance: { increment: applyDelta } },
-      });
+        newType === 'TRANSFER'
+          ? null
+          : dto.category !== undefined
+            ? await this.categories.resolveByName(dto.category, db)
+            : current.categoryId;
+      for (const change of balanceChanges) {
+        await db.account.update({
+          where: { id: change.id },
+          data: { balance: { increment: change.delta } },
+        });
+      }
       return db.transaction.update({
         where: { id },
         data: {
           accountId: account.id,
           amount,
           type: newType,
+          toAccountId: newType === 'TRANSFER' ? newToAccountId : null,
           categoryId,
           date:
             dto.date !== undefined
               ? new Date(`${dto.date}T00:00:00.000Z`)
               : current.date,
           description: dto.description ?? current.description,
+          scope,
+          personId,
         },
         include: { category: true },
       });
@@ -143,18 +287,42 @@ export class TransactionsService {
     const account = await this.prisma.account.findUnique({ where: { id: current.accountId } });
     if (!account) throw new NotFoundException(`Account ${current.accountId} not found`);
 
-    const reverseDelta = balanceDelta({
-      type: current.type as TxType,
-      accountType: account.type,
-      role: 'SOURCE',
-      amount: -Number(current.amount),
-    });
+    const balanceChanges: { id: string; delta: number }[] = [
+      {
+        id: account.id,
+        delta: balanceDelta({
+          type: current.type as TxType,
+          accountType: account.type,
+          role: 'SOURCE',
+          amount: -Number(current.amount),
+        }),
+      },
+    ];
+    if (current.type === 'TRANSFER' && current.toAccountId) {
+      const destination = await this.prisma.account.findUnique({
+        where: { id: current.toAccountId },
+      });
+      if (!destination) {
+        throw new NotFoundException(`Account ${current.toAccountId} not found`);
+      }
+      balanceChanges.push({
+        id: destination.id,
+        delta: balanceDelta({
+          type: 'TRANSFER',
+          accountType: destination.type,
+          role: 'DESTINATION',
+          amount: -Number(current.amount),
+        }),
+      });
+    }
 
     await this.prisma.$transaction(async (db) => {
-      await db.account.update({
-        where: { id: account.id },
-        data: { balance: { increment: reverseDelta } },
-      });
+      for (const change of balanceChanges) {
+        await db.account.update({
+          where: { id: change.id },
+          data: { balance: { increment: change.delta } },
+        });
+      }
       await db.transaction.delete({ where: { id } });
     });
 

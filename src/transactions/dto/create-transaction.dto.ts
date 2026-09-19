@@ -5,6 +5,7 @@ import {
   IsPositive,
   IsString,
   registerDecorator,
+  ValidateIf,
   ValidationArguments,
   ValidationOptions,
 } from 'class-validator';
@@ -38,18 +39,23 @@ export function IsCalendarDate(validationOptions?: ValidationOptions) {
 }
 
 export class CreateTransactionDto {
-  @IsIn(['income', 'expense'])
-  type!: 'income' | 'expense';
+  @IsIn(['income', 'expense', 'transfer'])
+  type!: 'income' | 'expense' | 'transfer';
 
   @IsString()
   accountId!: string;
+
+  @ValidateIf((dto) => dto.type === 'transfer')
+  @IsString()
+  toAccountId?: string;
 
   @IsNumber()
   @IsPositive()
   amount!: number;
 
+  @ValidateIf((dto) => dto.type !== 'transfer')
   @IsString()
-  description!: string;
+  description?: string;
 
   @IsCalendarDate()
   date!: string;
@@ -57,4 +63,12 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsIn(['joint', 'personal'])
+  scope?: 'joint' | 'personal';
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  personId?: string;
 }
