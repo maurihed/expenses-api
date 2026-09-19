@@ -131,6 +131,68 @@ describe('Debts (e2e)', () => {
     expect(await prisma.transaction.count({ where: { accountId } })).toBe(0);
   });
 
+  it('edita una deuda y valida monto vs abonado y fecha límite', async () => {
+    const debt = await createDebt({ amount: 1000 });
+    await request(app.getHttpServer())
+      .post(`/api/v1/debts/${debt.id}/payments`)
+      .send({ amount: 400, date: '2026-03-05' })
+      .expect(201);
+
+    const updated = await request(app.getHttpServer())
+      .put(`/api/v1/debts/${debt.id}`)
+      .send({ counterparty: 'Editado', amount: 900 })
+      .expect(200);
+    expect(updated.body).toMatchObject({ counterparty: 'Editado', amount: 900, remaining: 500 });
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/debts/${debt.id}`)
+      .send({ amount: 100 })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/debts/${debt.id}`)
+      .send({ date: '2026-06-01', dueDate: '2026-03-01' })
+      .expect(400);
+  });
+
+  it('rechaza abonar a una deuda archivada con 400', async () => {
+    const debt = await createDebt({ amount: 100 });
+    await request(app.getHttpServer()).delete(`/api/v1/debts/${debt.id}`).expect(200);
+    await request(app.getHttpServer())
+      .post(`/api/v1/debts/${debt.id}/payments`)
+      .send({ amount: 10, date: '2026-03-05' })
+      .expect(400);
+  });
+
+  it('rechaza un abono con cuenta de moneda distinta con 400', async () => {
+    const accountId = await createAccount(1000); // MXN
+    const debt = await createDebt({ type: 'payable', amount: 100, currency: 'USD' });
+    await request(app.getHttpServer())
+      .post(`/api/v1/debts/${debt.id}/payments`)
+      .send({ amount: 50, date: '2026-03-05', accountId })
+      .expect(400);
+  });
+
+  it('no permite editar ni borrar el movimiento de un abono desde /transactions', async () => {
+    const accountId = await createAccount(1000);
+    const debt = await createDebt({ type: 'payable', amount: 300 });
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/debts/${debt.id}/payments`)
+      .send({ amount: 300, date: '2026-03-06', accountId })
+      .expect(201);
+
+    const tx = await prisma.transaction.findFirstOrThrow({ where: { accountId } });
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/transactions/${tx.id}`)
+      .send({ description: 'intento' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .delete(`/api/v1/transactions/${tx.id}`)
+      .expect(400);
+  });
+
   it('archiva una deuda y la excluye de la lista por defecto', async () => {
     const debt = await createDebt({ counterparty: 'Archivar' });
     await request(app.getHttpServer()).delete(`/api/v1/debts/${debt.id}`).expect(200);

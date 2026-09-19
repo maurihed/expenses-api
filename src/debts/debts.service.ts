@@ -57,10 +57,16 @@ export class DebtsService {
   }
 
   async findAll(includeArchived = false, type?: string) {
+    const normalizedType = type?.toLowerCase();
+    if (normalizedType && normalizedType !== 'receivable' && normalizedType !== 'payable') {
+      throw new BadRequestException(`Invalid debt type ${type}`);
+    }
     const rows = await this.prisma.debt.findMany({
       where: {
         ...(includeArchived ? {} : { archived: false }),
-        ...(type ? { type: type.toUpperCase() as 'RECEIVABLE' | 'PAYABLE' } : {}),
+        ...(normalizedType
+          ? { type: normalizedType === 'receivable' ? ('RECEIVABLE' as const) : ('PAYABLE' as const) }
+          : {}),
       },
       include: { payments: { select: { amount: true } } },
       orderBy: { date: 'desc' },
@@ -129,6 +135,17 @@ export class DebtsService {
     if (dto.dueDate !== undefined) data.dueDate = dto.dueDate ? parseDate(dto.dueDate) : null;
     if (dto.notes !== undefined) data.notes = dto.notes;
 
+    const effectiveDate = dto.date ?? toIsoDate(current.date);
+    const effectiveDueDate =
+      dto.dueDate !== undefined
+        ? dto.dueDate
+        : current.dueDate
+          ? toIsoDate(current.dueDate)
+          : null;
+    if (effectiveDueDate && effectiveDueDate < effectiveDate) {
+      throw new BadRequestException('dueDate cannot be before date');
+    }
+
     const debt = await this.prisma.debt.update({
       where: { id },
       data,
@@ -153,27 +170,39 @@ export class DebtsService {
       throw new BadRequestException(`Debt ${debtId} is archived`);
     }
 
-    const { remaining } = debtBalance(
-      Number(debt.amount),
-      debt.payments.map((payment) => Number(payment.amount)),
-    );
-    if (round2(dto.amount) > remaining) {
-      throw new BadRequestException(
-        `Payment exceeds remaining balance (${remaining})`,
-      );
-    }
-
     const account = dto.accountId
       ? await this.prisma.account.findUnique({ where: { id: dto.accountId } })
       : null;
     if (dto.accountId && !account) {
       throw new NotFoundException(`Account ${dto.accountId} not found`);
     }
+    if (account?.archived) {
+      throw new BadRequestException(`Account ${account.id} is archived`);
+    }
+    if (account && account.currency !== debt.currency) {
+      throw new BadRequestException(
+        `Account currency (${account.currency}) does not match debt currency (${debt.currency})`,
+      );
+    }
 
     const linkedType: TxType = debt.type === 'PAYABLE' ? 'EXPENSE' : 'INCOME';
     const date = parseDate(dto.date);
 
     await this.prisma.$transaction(async (db) => {
+      // Lock the debt and re-validate to avoid concurrent overpayment.
+      await db.$queryRaw`SELECT id FROM "Debt" WHERE id = ${debtId} FOR UPDATE`;
+      const fresh = await db.debt.findUniqueOrThrow({
+        where: { id: debtId },
+        include: { payments: { select: { amount: true } } },
+      });
+      const { remaining } = debtBalance(
+        Number(fresh.amount),
+        fresh.payments.map((payment) => Number(payment.amount)),
+      );
+      if (round2(dto.amount) > remaining) {
+        throw new BadRequestException(`Payment exceeds remaining balance (${remaining})`);
+      }
+
       let transactionId: string | null = null;
 
       if (account) {

@@ -103,6 +103,18 @@ export class TransactionsService {
     return destination;
   }
 
+  private async assertNotDebtPayment(transactionId: string) {
+    const linked = await this.prisma.debtPayment.findUnique({
+      where: { transactionId },
+      select: { id: true },
+    });
+    if (linked) {
+      throw new BadRequestException(
+        'This transaction is a debt payment; manage it from the debts page',
+      );
+    }
+  }
+
   async create(dto: CreateTransactionDto) {
     const account = await this.prisma.account.findUnique({ where: { id: dto.accountId } });
     if (!account || account.archived) {
@@ -213,6 +225,7 @@ export class TransactionsService {
   async update(id: string, dto: UpdateTransactionDto) {
     const current = await this.prisma.transaction.findUnique({ where: { id } });
     if (!current) throw new NotFoundException(`Transaction ${id} not found`);
+    await this.assertNotDebtPayment(id);
 
     const { scope, personId } = await this.resolveScope(dto, {
       scope: current.scope,
@@ -366,6 +379,7 @@ export class TransactionsService {
   async remove(id: string) {
     const current = await this.prisma.transaction.findUnique({ where: { id } });
     if (!current) throw new NotFoundException(`Transaction ${id} not found`);
+    await this.assertNotDebtPayment(id);
 
     const account = await this.prisma.account.findUnique({ where: { id: current.accountId } });
     if (!account) throw new NotFoundException(`Account ${current.accountId} not found`);
