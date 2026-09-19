@@ -6,6 +6,7 @@ const DEFAULT_CORS_ORIGINS = [
   'https://expenses-peach.vercel.app',
   'https://expenses-v2-jet.vercel.app',
   'https://expenses.maurihed.com',
+  'http://localhost:5173',
   'http://localhost:5174',
 ];
 
@@ -21,6 +22,7 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
-  await app.listen(3000);
+  const port = Number(process.env.PORT ?? 3000);
+  await app.listen(port);
 }
 bootstrap();
