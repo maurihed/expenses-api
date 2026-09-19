@@ -1,9 +1,12 @@
 import {
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsPositive,
   IsString,
+  Max,
+  Min,
   registerDecorator,
   ValidateIf,
   ValidationArguments,
@@ -71,4 +74,10 @@ export class CreateTransactionDto {
   @ValidateIf((_, value) => value !== undefined)
   @IsString()
   personId?: string;
+
+  @ValidateIf((_, value) => value !== undefined && value !== null)
+  @IsInt()
+  @Min(2)
+  @Max(48)
+  installments?: number | null;
 }

@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CategoriesService } from '../categories/categories.service';
 import { AccountType, balanceDelta, TxType } from '../domain/balance';
+import { splitInstallments } from '../domain/installments';
+import { clampDayOfMonth } from '../domain/recurring';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -23,8 +26,43 @@ export class TransactionsService {
       type: tx.type.toLowerCase(),
       scope: tx.scope.toLowerCase(),
       personId: tx.personId ?? null,
+      installments: tx.installments ?? null,
     };
     return tx.type === 'TRANSFER' ? { ...base, toAccountId: tx.toAccountId ?? null } : base;
+  }
+
+  private installmentDueDate(start: Date, index: number): Date {
+    return clampDayOfMonth(
+      start.getUTCFullYear(),
+      start.getUTCMonth() + index,
+      start.getUTCDate(),
+    );
+  }
+
+  private async createInstallmentPlan(
+    db: Prisma.TransactionClient,
+    tx: { id: string; accountId: string; date: Date },
+    total: number,
+    installments: number,
+  ) {
+    const plan = await db.installmentPlan.create({
+      data: {
+        accountId: tx.accountId,
+        transactionId: tx.id,
+        totalAmount: total,
+        installments,
+        startDate: tx.date,
+      },
+    });
+    const amounts = splitInstallments(total, installments);
+    await db.installment.createMany({
+      data: amounts.map((amount, index) => ({
+        planId: plan.id,
+        number: index + 1,
+        dueDate: this.installmentDueDate(tx.date, index),
+        amount,
+      })),
+    });
   }
 
   private async resolveScope(
@@ -73,6 +111,16 @@ export class TransactionsService {
 
     const type = dto.type.toUpperCase() as TxType;
     const { scope, personId } = await this.resolveScope(dto);
+
+    const installments = dto.installments ?? null;
+    if (installments !== null) {
+      if (type !== 'EXPENSE') {
+        throw new BadRequestException('installments are only allowed for expense transactions');
+      }
+      if (account.type !== 'CREDIT') {
+        throw new BadRequestException('installments are only allowed on CREDIT accounts');
+      }
+    }
 
     if (type === 'TRANSFER') {
       const destination = await this.resolveDestination(dto.toAccountId, account.id);
@@ -128,7 +176,7 @@ export class TransactionsService {
         where: { id: account.id },
         data: { balance: { increment: delta } },
       });
-      return db.transaction.create({
+      const created = await db.transaction.create({
         data: {
           accountId: account.id,
           amount: dto.amount,
@@ -138,8 +186,13 @@ export class TransactionsService {
           description: dto.description ?? '',
           scope,
           personId,
+          installments,
         },
       });
+      if (installments !== null) {
+        await this.createInstallmentPlan(db, created, dto.amount, installments);
+      }
+      return created;
     });
 
     return { id: tx.id };
@@ -174,6 +227,16 @@ export class TransactionsService {
     const currentType = current.type as TxType;
     const newType = (dto.type ?? current.type.toLowerCase()).toUpperCase() as TxType;
     const amount = dto.amount ?? Number(current.amount);
+
+    const installments = dto.installments ?? null;
+    if (installments !== null) {
+      if (newType !== 'EXPENSE') {
+        throw new BadRequestException('installments are only allowed for expense transactions');
+      }
+      if (account.type !== 'CREDIT') {
+        throw new BadRequestException('installments are only allowed on CREDIT accounts');
+      }
+    }
 
     const oldSource =
       account.id === current.accountId
@@ -257,7 +320,14 @@ export class TransactionsService {
           data: { balance: { increment: change.delta } },
         });
       }
-      return db.transaction.update({
+      const existingPlan = await db.installmentPlan.findUnique({
+        where: { transactionId: id },
+      });
+      if (existingPlan) {
+        await db.installment.deleteMany({ where: { planId: existingPlan.id } });
+        await db.installmentPlan.delete({ where: { id: existingPlan.id } });
+      }
+      const saved = await db.transaction.update({
         where: { id },
         data: {
           accountId: account.id,
@@ -272,9 +342,14 @@ export class TransactionsService {
           description: dto.description ?? current.description,
           scope,
           personId,
+          installments,
         },
         include: { category: true },
       });
+      if (installments !== null) {
+        await this.createInstallmentPlan(db, saved, amount, installments);
+      }
+      return saved;
     });
 
     return this.toJson(updated);
@@ -322,6 +397,11 @@ export class TransactionsService {
           where: { id: change.id },
           data: { balance: { increment: change.delta } },
         });
+      }
+      const plan = await db.installmentPlan.findUnique({ where: { transactionId: id } });
+      if (plan) {
+        await db.installment.deleteMany({ where: { planId: plan.id } });
+        await db.installmentPlan.delete({ where: { id: plan.id } });
       }
       await db.transaction.delete({ where: { id } });
     });

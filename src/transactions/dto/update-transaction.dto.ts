@@ -1,8 +1,11 @@
 import {
   IsIn,
+  IsInt,
   IsNumber,
   IsPositive,
   IsString,
+  Max,
+  Min,
   ValidateIf,
 } from 'class-validator';
 import { IsCalendarDate } from './create-transaction.dto';
@@ -44,4 +47,10 @@ export class UpdateTransactionDto {
   @ValidateIf((_, value) => value !== undefined)
   @IsString()
   personId?: string;
+
+  @ValidateIf((_, value) => value !== undefined && value !== null)
+  @IsInt()
+  @Min(2)
+  @Max(48)
+  installments?: number | null;
 }
