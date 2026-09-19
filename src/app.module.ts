@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AccountsModule } from './accounts/accounts.module';
 import { CategoriesModule } from './categories/categories.module';
+import { FxModule } from './fx/fx.module';
 import { HealthModule } from './health/health.module';
 import { PersonsModule } from './persons/persons.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -16,6 +17,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     TransactionsModule,
     PersonsModule,
     RecurringModule,
+    FxModule,
   ],
 })
 export class AppModule {}
