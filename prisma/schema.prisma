@@ -30,6 +30,18 @@ enum Scope {
   PERSONAL
 }
 
+enum RecurringType {
+  SUBSCRIPTION
+  INCOME
+  INTEREST
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
 model Person {
   id                 String               @id @default(uuid())
   name               String
@@ -38,6 +50,7 @@ model Person {
   active             Boolean              @default(true)
   transactions       Transaction[]
   adjustments        PersonalAdjustment[]
+  recurringRules     RecurringRule[]
   createdAt          DateTime             @default(now())
 }
 
@@ -48,6 +61,7 @@ model Category {
   color        String?
   archived     Boolean       @default(false)
   transactions Transaction[]
+  recurringRules RecurringRule[]
 }
 
 model Account {
@@ -63,6 +77,8 @@ model Account {
   archived            Boolean       @default(false)
   legacyMongoId       String?       @unique
   transactions        Transaction[]
+  recurringRules      RecurringRule[]
+  installmentPlans    InstallmentPlan[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 }
@@ -81,7 +97,10 @@ model Transaction {
   personId      String?
   person        Person?   @relation(fields: [personId], references: [id])
   toAccountId   String?
+  installments  Int?
   legacyMongoId String?   @unique
+  occurrences   RecurringOccurrence[]
+  installmentPlan InstallmentPlan?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   @@index([accountId, date])
@@ -96,4 +115,66 @@ model PersonalAdjustment {
   reason    String
   date      DateTime @db.Date
   createdAt DateTime @default(now())
+}
+
+model RecurringRule {
+  id            String             @id @default(uuid())
+  name          String
+  type          RecurringType
+  accountId     String
+  account       Account            @relation(fields: [accountId], references: [id])
+  categoryId    String?
+  category      Category?          @relation(fields: [categoryId], references: [id])
+  scope         Scope              @default(JOINT)
+  personId      String?
+  person        Person?            @relation(fields: [personId], references: [id])
+  amount        Decimal?           @db.Decimal(12, 2)
+  frequency     RecurringFrequency @default(MONTHLY)
+  dayOfMonth    Int?
+  dayOfWeek     Int?
+  startDate     DateTime           @db.Date
+  endDate       DateTime?          @db.Date
+  nextRunDate   DateTime           @db.Date
+  lastRunDate   DateTime?          @db.Date
+  interestTiers Json?
+  active        Boolean            @default(true)
+  occurrences   RecurringOccurrence[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  @@index([active, nextRunDate])
+}
+
+model RecurringOccurrence {
+  id            String        @id @default(uuid())
+  ruleId        String
+  rule          RecurringRule @relation(fields: [ruleId], references: [id])
+  date          DateTime      @db.Date
+  amount        Decimal       @db.Decimal(12, 2)
+  transactionId String?
+  transaction   Transaction?  @relation(fields: [transactionId], references: [id])
+  createdAt     DateTime      @default(now())
+  @@unique([ruleId, date])
+}
+
+model InstallmentPlan {
+  id            String        @id @default(uuid())
+  accountId     String
+  account       Account       @relation(fields: [accountId], references: [id])
+  transactionId String        @unique
+  transaction   Transaction   @relation(fields: [transactionId], references: [id])
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  installments  Int
+  startDate     DateTime      @db.Date
+  installments_ Installment[]
+  createdAt     DateTime      @default(now())
+}
+
+model Installment {
+  id      String          @id @default(uuid())
+  planId  String
+  plan    InstallmentPlan @relation(fields: [planId], references: [id])
+  number  Int
+  dueDate DateTime        @db.Date
+  amount  Decimal         @db.Decimal(12, 2)
+  @@unique([planId, number])
 }
