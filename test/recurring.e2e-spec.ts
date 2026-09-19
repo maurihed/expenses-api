@@ -395,6 +395,36 @@ describe('Recurring rules CRUD (e2e)', () => {
       .expect(400);
   });
 
+  it('permite editar una regla cuya cuenta está archivada, pero no cambiar a otra archivada', async () => {
+    const accountId = await createAccount('Rec Cuenta Archivada Editar');
+    const rule = await createRule({
+      name: 'Editable con cuenta archivada',
+      type: 'subscription',
+      accountId,
+      amount: 100,
+      frequency: 'monthly',
+      startDate: '2026-01-01',
+    });
+
+    await request(app.getHttpServer()).delete(`/api/v1/accounts/${accountId}`).expect(200);
+
+    const updated = await request(app.getHttpServer())
+      .put(`/api/v1/recurring/${rule.id}`)
+      .send({ name: 'Renombrada', amount: 150 })
+      .expect(200);
+    expect(updated.body.name).toBe('Renombrada');
+    expect(updated.body.amount).toBe(150);
+    expect(updated.body.accountId).toBe(accountId);
+
+    const archivedTarget = await createAccount('Rec Cuenta Archivo Destino');
+    await request(app.getHttpServer()).delete(`/api/v1/accounts/${archivedTarget}`).expect(200);
+
+    await request(app.getHttpServer())
+      .put(`/api/v1/recurring/${rule.id}`)
+      .send({ accountId: archivedTarget })
+      .expect(400);
+  });
+
   it('responde 404 al editar o desactivar una regla inexistente', async () => {
     await request(app.getHttpServer())
       .put(`/api/v1/recurring/${MISSING_ID}`)

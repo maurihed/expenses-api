@@ -66,7 +66,10 @@ export class RecurringService {
     return tiers;
   }
 
-  private async buildData(input: NormalizedInput): Promise<any> {
+  private async buildData(
+    input: NormalizedInput,
+    { allowArchivedAccount = false }: { allowArchivedAccount?: boolean } = {},
+  ): Promise<any> {
     const type = input.type;
     const frequency = (input.frequency ?? 'monthly') as RecurringFrequency;
 
@@ -91,7 +94,7 @@ export class RecurringService {
 
     const account = await this.prisma.account.findUnique({ where: { id: input.accountId } });
     if (!account) throw new NotFoundException(`Account ${input.accountId} not found`);
-    if (account.archived) {
+    if (account.archived && !allowArchivedAccount) {
       throw new BadRequestException(`Account ${input.accountId} is archived`);
     }
 
@@ -212,24 +215,30 @@ export class RecurringService {
     const current = await this.prisma.recurringRule.findUnique({ where: { id } });
     if (!current) throw new NotFoundException(`Recurring rule ${id} not found`);
 
-    const data = await this.buildData({
-      name: dto.name ?? current.name,
-      type: (dto.type ?? current.type.toLowerCase()) as RecurringTypeValue,
-      accountId: dto.accountId ?? current.accountId,
-      categoryId: dto.categoryId !== undefined ? dto.categoryId : current.categoryId,
-      scope: (dto.scope ?? current.scope.toLowerCase()) as RecurringScopeValue,
-      personId: dto.personId !== undefined ? dto.personId : current.personId,
-      amount: dto.amount !== undefined ? dto.amount : current.amount == null ? null : Number(current.amount),
-      frequency: dto.frequency ?? (current.frequency.toLowerCase() as RecurringFrequency),
-      dayOfMonth: dto.dayOfMonth !== undefined ? dto.dayOfMonth : current.dayOfMonth,
-      dayOfWeek: dto.dayOfWeek !== undefined ? dto.dayOfWeek : current.dayOfWeek,
-      startDate: dto.startDate ?? current.startDate.toISOString().slice(0, 10),
-      endDate: dto.endDate !== undefined ? dto.endDate : current.endDate
-        ? current.endDate.toISOString().slice(0, 10)
-        : null,
-      interestTiers:
-        dto.interestTiers !== undefined ? dto.interestTiers : current.interestTiers ?? undefined,
-    });
+    const accountChanged =
+      dto.accountId !== undefined && dto.accountId !== current.accountId;
+
+    const data = await this.buildData(
+      {
+        name: dto.name ?? current.name,
+        type: (dto.type ?? current.type.toLowerCase()) as RecurringTypeValue,
+        accountId: dto.accountId ?? current.accountId,
+        categoryId: dto.categoryId !== undefined ? dto.categoryId : current.categoryId,
+        scope: (dto.scope ?? current.scope.toLowerCase()) as RecurringScopeValue,
+        personId: dto.personId !== undefined ? dto.personId : current.personId,
+        amount: dto.amount !== undefined ? dto.amount : current.amount == null ? null : Number(current.amount),
+        frequency: dto.frequency ?? (current.frequency.toLowerCase() as RecurringFrequency),
+        dayOfMonth: dto.dayOfMonth !== undefined ? dto.dayOfMonth : current.dayOfMonth,
+        dayOfWeek: dto.dayOfWeek !== undefined ? dto.dayOfWeek : current.dayOfWeek,
+        startDate: dto.startDate ?? current.startDate.toISOString().slice(0, 10),
+        endDate: dto.endDate !== undefined ? dto.endDate : current.endDate
+          ? current.endDate.toISOString().slice(0, 10)
+          : null,
+        interestTiers:
+          dto.interestTiers !== undefined ? dto.interestTiers : current.interestTiers ?? undefined,
+      },
+      { allowArchivedAccount: !accountChanged },
+    );
 
     const datesChanged =
       dto.startDate !== undefined ||
