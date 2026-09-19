@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AccountType, balanceDelta, TxType } from '../domain/balance';
 import { computeInterest, InterestTier } from '../domain/interest';
@@ -30,6 +30,8 @@ interface NormalizedInput {
 
 @Injectable()
 export class RecurringService {
+  private readonly logger = new Logger(RecurringService.name);
+
   constructor(private prisma: PrismaService) {}
 
   private parseDate(value: string): Date {
@@ -121,8 +123,12 @@ export class RecurringService {
    * and occurrences out of sync. Re-running is safe: the unique
    * `(ruleId, date)` constraint on `RecurringOccurrence` is checked before
    * writing, and existing occurrences are counted as `skipped`.
+   *
+   * Failures are isolated per rule: a throwing rule is logged and counted in
+   * `failed`, then the sweep continues with the remaining rules so one bad
+   * rule cannot starve the rest.
    */
-  async runDue(asOf: Date): Promise<{ created: number; skipped: number }> {
+  async runDue(asOf: Date): Promise<{ created: number; skipped: number; failed: number }> {
     const asOfDay = this.startOfUtcDay(asOf);
     const rules = await this.prisma.recurringRule.findMany({
       where: { active: true, nextRunDate: { lte: asOfDay } },
@@ -131,60 +137,71 @@ export class RecurringService {
 
     let created = 0;
     let skipped = 0;
+    let failed = 0;
 
     for (const rule of rules) {
-      const result = await this.prisma.$transaction(async (db) => {
-        let ruleCreated = 0;
-        let ruleSkipped = 0;
-        let nextRunDate = rule.nextRunDate;
+      try {
+        const result = await this.prisma.$transaction(async (db) => {
+          let ruleCreated = 0;
+          let ruleSkipped = 0;
+          let nextRunDate = rule.nextRunDate;
 
-        while (
-          nextRunDate.getTime() <= asOfDay.getTime() &&
-          (rule.endDate === null || nextRunDate.getTime() <= rule.endDate.getTime())
-        ) {
-          const occurrenceDate = nextRunDate;
-          const existing = await db.recurringOccurrence.findUnique({
-            where: { ruleId_date: { ruleId: rule.id, date: occurrenceDate } },
-          });
-
-          if (existing) {
-            ruleSkipped += 1;
-          } else {
-            const account = await db.account.findUniqueOrThrow({
-              where: { id: rule.accountId },
+          while (
+            nextRunDate.getTime() <= asOfDay.getTime() &&
+            (rule.endDate === null || nextRunDate.getTime() <= rule.endDate.getTime())
+          ) {
+            const occurrenceDate = nextRunDate;
+            const existing = await db.recurringOccurrence.findUnique({
+              where: { ruleId_date: { ruleId: rule.id, date: occurrenceDate } },
             });
-            const { amount, transactionId } = await this.materialize(
-              db,
-              rule,
-              account,
+
+            if (existing) {
+              ruleSkipped += 1;
+            } else {
+              const account = await db.account.findUniqueOrThrow({
+                where: { id: rule.accountId },
+              });
+              const { amount, transactionId } = await this.materialize(
+                db,
+                rule,
+                account,
+                occurrenceDate,
+              );
+              await db.recurringOccurrence.create({
+                data: { ruleId: rule.id, date: occurrenceDate, amount, transactionId },
+              });
+              ruleCreated += 1;
+            }
+
+            nextRunDate = nextOccurrence(
+              rule.frequency.toLowerCase() as RecurringFrequency,
               occurrenceDate,
+              rule.dayOfMonth,
+              rule.dayOfWeek,
             );
-            await db.recurringOccurrence.create({
-              data: { ruleId: rule.id, date: occurrenceDate, amount, transactionId },
+            await db.recurringRule.update({
+              where: { id: rule.id },
+              data: { nextRunDate, lastRunDate: occurrenceDate },
             });
-            ruleCreated += 1;
           }
 
-          nextRunDate = nextOccurrence(
-            rule.frequency.toLowerCase() as RecurringFrequency,
-            occurrenceDate,
-            rule.dayOfMonth,
-            rule.dayOfWeek,
-          );
-          await db.recurringRule.update({
-            where: { id: rule.id },
-            data: { nextRunDate, lastRunDate: occurrenceDate },
-          });
-        }
+          return { created: ruleCreated, skipped: ruleSkipped };
+        });
 
-        return { created: ruleCreated, skipped: ruleSkipped };
-      });
-
-      created += result.created;
-      skipped += result.skipped;
+        created += result.created;
+        skipped += result.skipped;
+      } catch (error) {
+        failed += 1;
+        this.logger.error(
+          `Recurring rule ${rule.id} (${rule.name}) failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
     }
 
-    return { created, skipped };
+    return { created, skipped, failed };
   }
 
   private parseInterestTiers(value: unknown): InterestTierInput[] {

@@ -60,10 +60,14 @@ describe('Recurring runDue engine (e2e)', () => {
     await app.close();
   });
 
-  const createAccount = async (name: string, balance = 1000) => {
+  const createAccount = async (
+    name: string,
+    balance = 1000,
+    extra: Record<string, unknown> = {},
+  ) => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/accounts')
-      .send({ name, balance })
+      .send({ name, balance, ...extra })
       .expect(201);
     accountIds.push(res.body.id);
     return res.body.id as string;
@@ -107,7 +111,7 @@ describe('Recurring runDue engine (e2e)', () => {
 
     const asOf = new Date('2025-01-31T00:00:00.000Z');
     const first = await recurring.runDue(asOf);
-    expect(first).toEqual({ created: 1, skipped: 0 });
+    expect(first).toEqual({ created: 1, skipped: 0, failed: 0 });
 
     const tx = await prisma.transaction.findMany({ where: { accountId } });
     expect(tx).toHaveLength(1);
@@ -125,7 +129,7 @@ describe('Recurring runDue engine (e2e)', () => {
     expect(occurrences[0].transactionId).toBe(tx[0].id);
 
     const second = await recurring.runDue(asOf);
-    expect(second).toEqual({ created: 0, skipped: 0 });
+    expect(second).toEqual({ created: 0, skipped: 0, failed: 0 });
     expect(await prisma.transaction.count({ where: { accountId } })).toBe(1);
 
     const reloaded = await prisma.recurringRule.findUniqueOrThrow({ where: { id: rule.id } });
@@ -147,7 +151,7 @@ describe('Recurring runDue engine (e2e)', () => {
     });
 
     const result = await recurring.runDue(new Date('2025-03-15T00:00:00.000Z'));
-    expect(result).toEqual({ created: 3, skipped: 0 });
+    expect(result).toEqual({ created: 3, skipped: 0, failed: 0 });
     expect(Number(await balanceOf(accountId))).toBe(700);
 
     const reloaded = await prisma.recurringRule.findUniqueOrThrow({ where: { id: rule.id } });
@@ -170,7 +174,7 @@ describe('Recurring runDue engine (e2e)', () => {
     });
 
     const result = await recurring.runDue(new Date('2025-03-31T00:00:00.000Z'));
-    expect(result).toEqual({ created: 1, skipped: 0 });
+    expect(result).toEqual({ created: 1, skipped: 0, failed: 0 });
 
     const tx = await prisma.transaction.findMany({ where: { accountId } });
     expect(tx).toHaveLength(1);
@@ -200,7 +204,7 @@ describe('Recurring runDue engine (e2e)', () => {
     });
 
     const result = await recurring.runDue(new Date('2025-04-30T00:00:00.000Z'));
-    expect(result).toEqual({ created: 1, skipped: 0 });
+    expect(result).toEqual({ created: 1, skipped: 0, failed: 0 });
 
     const tx = await prisma.transaction.findMany({ where: { accountId } });
     expect(tx).toHaveLength(1);
@@ -226,7 +230,7 @@ describe('Recurring runDue engine (e2e)', () => {
     });
 
     const result = await recurring.runDue(new Date('2025-05-31T00:00:00.000Z'));
-    expect(result).toEqual({ created: 1, skipped: 0 });
+    expect(result).toEqual({ created: 1, skipped: 0, failed: 0 });
     expect(await prisma.transaction.count({ where: { accountId } })).toBe(0);
 
     const occurrences = await prisma.recurringOccurrence.findMany({ where: { ruleId: rule.id } });
@@ -252,7 +256,7 @@ describe('Recurring runDue engine (e2e)', () => {
     });
 
     const result = await recurring.runDue(new Date('2025-06-10T00:00:00.000Z'));
-    expect(result).toEqual({ created: 0, skipped: 1 });
+    expect(result).toEqual({ created: 0, skipped: 1, failed: 0 });
     expect(await prisma.transaction.count({ where: { accountId } })).toBe(0);
 
     const reloaded = await prisma.recurringRule.findUniqueOrThrow({ where: { id: rule.id } });
@@ -273,14 +277,14 @@ describe('Recurring runDue engine (e2e)', () => {
     });
 
     const result = await recurring.runDue(new Date('2025-12-31T00:00:00.000Z'));
-    expect(result).toEqual({ created: 2, skipped: 0 });
+    expect(result).toEqual({ created: 2, skipped: 0, failed: 0 });
     expect(await prisma.transaction.count({ where: { accountId } })).toBe(2);
 
     const reloaded = await prisma.recurringRule.findUniqueOrThrow({ where: { id: rule.id } });
     expect(day(reloaded.nextRunDate)).toBe('2025-03-01');
   });
 
-  it('POST /recurring/run devuelve { created, skipped }', async () => {
+  it('POST /recurring/run devuelve { created, skipped, failed }', async () => {
     const accountId = await createAccount('Run Endpoint', 1000);
     await createRule({
       name: 'Endpoint Run',
@@ -294,7 +298,93 @@ describe('Recurring runDue engine (e2e)', () => {
     });
 
     const res = await request(app.getHttpServer()).post('/api/v1/recurring/run').expect(201);
-    expect(res.body).toEqual({ created: 2, skipped: 0 });
+    expect(res.body).toEqual({ created: 2, skipped: 0, failed: 0 });
     expect(await prisma.transaction.count({ where: { accountId } })).toBe(2);
+  });
+
+  it('materializa un EXPENSE de suscripción en CREDIT incrementando la deuda', async () => {
+    const accountId = await createAccount('Run Crédito Suscripción', 0, {
+      type: 'CREDIT',
+      creditLimit: 50000,
+    });
+    const categoryId = await createCategory('Crédito Suscripción');
+    await createRule({
+      name: 'Suscripción Crédito',
+      type: 'subscription',
+      accountId,
+      categoryId,
+      amount: 300,
+      frequency: 'monthly',
+      dayOfMonth: 5,
+      startDate: '2025-01-05',
+    });
+
+    const result = await recurring.runDue(new Date('2025-01-31T00:00:00.000Z'));
+    expect(result).toEqual({ created: 1, skipped: 0, failed: 0 });
+
+    const tx = await prisma.transaction.findMany({ where: { accountId } });
+    expect(tx).toHaveLength(1);
+    expect(tx[0].type).toBe('EXPENSE');
+    expect(Number(await balanceOf(accountId))).toBe(300);
+  });
+
+  it('materializa un INCOME de interés en CREDIT reduciendo la deuda', async () => {
+    const accountId = await createAccount('Run Crédito Interés', 1000, {
+      type: 'CREDIT',
+      creditLimit: 50000,
+    });
+    await createRule({
+      name: 'Interés Crédito',
+      type: 'interest',
+      accountId,
+      interestTiers: [{ upTo: null, annualRate: 0.12 }],
+      frequency: 'monthly',
+      startDate: '2025-02-28',
+    });
+
+    const result = await recurring.runDue(new Date('2025-02-28T00:00:00.000Z'));
+    expect(result).toEqual({ created: 1, skipped: 0, failed: 0 });
+
+    const tx = await prisma.transaction.findMany({ where: { accountId } });
+    expect(tx).toHaveLength(1);
+    expect(tx[0].type).toBe('INCOME');
+    expect(Number(tx[0].amount)).toBe(10);
+    expect(Number(await balanceOf(accountId))).toBe(990);
+  });
+
+  it('aísla el fallo de una regla y continúa con las demás', async () => {
+    const brokenAccountId = await createAccount('Run Fallo', 1000);
+    const brokenRule = await createRule({
+      name: 'Regla con tramos corruptos',
+      type: 'interest',
+      accountId: brokenAccountId,
+      interestTiers: [{ upTo: null, annualRate: 0.1 }],
+      frequency: 'monthly',
+      startDate: '2025-01-01',
+    });
+    // Force a per-rule failure: a null entry inside the JSON tiers makes
+    // computeInterest throw at runtime.
+    await prisma.recurringRule.update({
+      where: { id: brokenRule.id },
+      data: { interestTiers: [null] as any },
+    });
+
+    const goodAccountId = await createAccount('Run Bueno', 1000);
+    await createRule({
+      name: 'Regla posterior válida',
+      type: 'subscription',
+      accountId: goodAccountId,
+      amount: 100,
+      frequency: 'monthly',
+      dayOfMonth: 1,
+      startDate: '2025-01-01',
+    });
+
+    const result = await recurring.runDue(new Date('2025-01-31T00:00:00.000Z'));
+    expect(result).toEqual({ created: 1, skipped: 0, failed: 1 });
+    expect(await prisma.transaction.count({ where: { accountId: goodAccountId } })).toBe(1);
+
+    const broken = await prisma.recurringRule.findUniqueOrThrow({ where: { id: brokenRule.id } });
+    expect(day(broken.nextRunDate)).toBe('2025-01-01');
   });
 });
