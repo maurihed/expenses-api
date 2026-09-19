@@ -4,6 +4,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsOptional,
   IsPositive,
   IsString,
   Max,
@@ -30,15 +31,15 @@ export class CreateRecurringRuleDto {
   @IsString()
   accountId!: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsString()
   categoryId?: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsIn(RECURRING_SCOPES)
   scope?: RecurringScopeValue;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsString()
   personId?: string;
 
@@ -47,17 +48,17 @@ export class CreateRecurringRuleDto {
   @IsPositive()
   amount?: number;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsIn(RECURRING_FREQUENCIES)
   frequency?: RecurringFrequencyValue;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(31)
   dayOfMonth?: number;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsInt()
   @Min(0)
   @Max(6)
@@ -66,15 +67,15 @@ export class CreateRecurringRuleDto {
   @IsCalendarDate()
   startDate!: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsCalendarDate()
   endDate?: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsArray()
   interestTiers?: unknown[];
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsBoolean()
   active?: boolean;
 }

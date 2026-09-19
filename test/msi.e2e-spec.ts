@@ -260,6 +260,23 @@ describe('MSI installments (e2e)', () => {
     }
   });
 
+  it('acepta los límites válidos 2 y 48', async () => {
+    const accountId = await createCredit('MSI Límites');
+    const two = await createMsi(accountId, { installments: 2 });
+    const twoPlan = await prisma.installmentPlan.findUniqueOrThrow({
+      where: { transactionId: two },
+    });
+    expect(twoPlan.installments).toBe(2);
+
+    const fortyEight = await createMsi(accountId, { installments: 48 });
+    const fortyEightPlan = await prisma.installmentPlan.findUniqueOrThrow({
+      where: { transactionId: fortyEight },
+      include: { installments_: true },
+    });
+    expect(fortyEightPlan.installments).toBe(48);
+    expect(fortyEightPlan.installments_).toHaveLength(48);
+  });
+
   it('rechaza installments en PUT sobre un movimiento no EXPENSE o cuenta no CREDIT', async () => {
     const category = uniqueCategory('Put');
     const debitId = await createAccount('MSI Put Debit', 1000, { type: 'DEBIT' });

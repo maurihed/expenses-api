@@ -282,6 +282,30 @@ describe('Recurring runDue engine (e2e)', () => {
 
     const reloaded = await prisma.recurringRule.findUniqueOrThrow({ where: { id: rule.id } });
     expect(day(reloaded.nextRunDate)).toBe('2025-03-01');
+    expect(reloaded.active).toBe(false);
+  });
+
+  it('desactiva una regla cuyo nextRunDate ya superó endDate sin materializar nada', async () => {
+    const accountId = await createAccount('Run Fin Pasado', 1000);
+    const rule = await createRule({
+      name: 'Fin Pasado',
+      type: 'subscription',
+      accountId,
+      amount: 10,
+      frequency: 'monthly',
+      dayOfMonth: 31,
+      startDate: '2025-01-01',
+      endDate: '2025-01-15',
+    });
+    expect(rule.nextRunDate).toBe('2025-01-31');
+
+    const result = await recurring.runDue(new Date('2025-03-31T00:00:00.000Z'));
+    expect(result).toEqual({ created: 0, skipped: 0, failed: 0 });
+    expect(await prisma.transaction.count({ where: { accountId } })).toBe(0);
+
+    const reloaded = await prisma.recurringRule.findUniqueOrThrow({ where: { id: rule.id } });
+    expect(reloaded.active).toBe(false);
+    expect(day(reloaded.nextRunDate)).toBe('2025-01-31');
   });
 
   it('POST /recurring/run devuelve { created, skipped, failed }', async () => {

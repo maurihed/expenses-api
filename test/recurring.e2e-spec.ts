@@ -189,6 +189,185 @@ describe('Recurring rules CRUD (e2e)', () => {
     );
   });
 
+  it('acepta el payload exacto del formulario (nulls explícitos) al crear y editar', async () => {
+    const accountId = await createAccount('Rec Payload Form');
+    const categoryId = await createCategory('Payload Form');
+
+    const subscription = await createRule({
+      name: 'Form Suscripción',
+      type: 'subscription',
+      accountId,
+      categoryId,
+      scope: 'joint',
+      personId: null,
+      amount: 199.99,
+      frequency: 'monthly',
+      dayOfMonth: 15,
+      dayOfWeek: null,
+      startDate: '2026-01-15',
+      endDate: null,
+      interestTiers: null,
+      active: true,
+    });
+    expect(subscription).toEqual(
+      expect.objectContaining({
+        type: 'subscription',
+        categoryId,
+        personId: null,
+        amount: 199.99,
+        dayOfMonth: 15,
+        dayOfWeek: null,
+        endDate: null,
+        interestTiers: null,
+        active: true,
+      }),
+    );
+
+    const income = await createRule({
+      name: 'Form Ingreso',
+      type: 'income',
+      accountId,
+      categoryId: null,
+      scope: 'joint',
+      personId: null,
+      amount: 5000,
+      frequency: 'biweekly',
+      dayOfMonth: null,
+      dayOfWeek: 5,
+      startDate: '2026-01-02',
+      endDate: null,
+      interestTiers: null,
+      active: true,
+    });
+    expect(income).toEqual(
+      expect.objectContaining({
+        type: 'income',
+        categoryId: null,
+        personId: null,
+        amount: 5000,
+        dayOfMonth: null,
+        dayOfWeek: 5,
+        endDate: null,
+        interestTiers: null,
+      }),
+    );
+
+    const interest = await createRule({
+      name: 'Form Interés',
+      type: 'interest',
+      accountId,
+      categoryId: null,
+      scope: 'joint',
+      personId: null,
+      amount: null,
+      frequency: 'monthly',
+      dayOfMonth: 28,
+      dayOfWeek: null,
+      startDate: '2026-02-28',
+      endDate: null,
+      interestTiers: [
+        { upTo: 10000, annualRate: 0.12 },
+        { upTo: null, annualRate: 0.06 },
+      ],
+      active: true,
+    });
+    expect(interest).toEqual(
+      expect.objectContaining({
+        type: 'interest',
+        categoryId: null,
+        amount: null,
+        dayOfMonth: 28,
+        interestTiers: [
+          { upTo: 10000, annualRate: 0.12 },
+          { upTo: null, annualRate: 0.06 },
+        ],
+      }),
+    );
+
+    const updated = await request(app.getHttpServer())
+      .put(`/api/v1/recurring/${income.id}`)
+      .send({
+        name: 'Form Ingreso Editado',
+        type: 'income',
+        accountId,
+        categoryId: null,
+        scope: 'joint',
+        personId: null,
+        amount: 6000,
+        frequency: 'biweekly',
+        dayOfMonth: null,
+        dayOfWeek: 5,
+        startDate: '2026-01-02',
+        endDate: null,
+        interestTiers: null,
+        active: true,
+      })
+      .expect(200);
+    expect(updated.body).toEqual(
+      expect.objectContaining({
+        name: 'Form Ingreso Editado',
+        amount: 6000,
+        categoryId: null,
+        personId: null,
+        dayOfMonth: null,
+        dayOfWeek: 5,
+        endDate: null,
+        interestTiers: null,
+      }),
+    );
+  });
+
+  it('rechaza interestTiers con upTo no creciente o <= 0 con 400', async () => {
+    const accountId = await createAccount('Rec Tramos Orden');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/recurring')
+      .send({
+        name: 'Tramos desordenados',
+        type: 'interest',
+        accountId,
+        interestTiers: [
+          { upTo: 5000, annualRate: 0.05 },
+          { upTo: 1000, annualRate: 0.1 },
+          { upTo: null, annualRate: 0.06 },
+        ],
+        frequency: 'monthly',
+        startDate: '2026-01-01',
+      })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/recurring')
+      .send({
+        name: 'Tramos repetidos',
+        type: 'interest',
+        accountId,
+        interestTiers: [
+          { upTo: 1000, annualRate: 0.05 },
+          { upTo: 1000, annualRate: 0.1 },
+          { upTo: null, annualRate: 0.06 },
+        ],
+        frequency: 'monthly',
+        startDate: '2026-01-01',
+      })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/recurring')
+      .send({
+        name: 'Tramo no positivo',
+        type: 'interest',
+        accountId,
+        interestTiers: [
+          { upTo: 0, annualRate: 0.05 },
+          { upTo: null, annualRate: 0.06 },
+        ],
+        frequency: 'monthly',
+        startDate: '2026-01-01',
+      })
+      .expect(400);
+  });
+
   it('rechaza interestTiers sin tramo final null con 400', async () => {
     const accountId = await createAccount('Rec Tramos Inválidos');
 

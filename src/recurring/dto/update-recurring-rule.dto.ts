@@ -4,11 +4,11 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsOptional,
   IsPositive,
   IsString,
   Max,
   Min,
-  ValidateIf,
 } from 'class-validator';
 import { IsCalendarDate } from '../../transactions/dto/create-transaction.dto';
 import {
@@ -21,64 +21,64 @@ import {
 } from './create-recurring-rule.dto';
 
 export class UpdateRecurringRuleDto {
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsString()
   name?: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsIn(RECURRING_TYPES)
   type?: RecurringTypeValue;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsString()
   accountId?: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsString()
   categoryId?: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsIn(RECURRING_SCOPES)
   scope?: RecurringScopeValue;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsString()
   personId?: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsNumber()
   @IsPositive()
   amount?: number;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsIn(RECURRING_FREQUENCIES)
   frequency?: RecurringFrequencyValue;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(31)
   dayOfMonth?: number;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsInt()
   @Min(0)
   @Max(6)
   dayOfWeek?: number;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsCalendarDate()
   startDate?: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsCalendarDate()
   endDate?: string;
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsArray()
   interestTiers?: unknown[];
 
-  @ValidateIf((_, value) => value !== undefined)
+  @IsOptional()
   @IsBoolean()
   active?: boolean;
 }

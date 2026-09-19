@@ -185,6 +185,16 @@ export class RecurringService {
             });
           }
 
+          // The next occurrence falls after the rule's endDate: there is
+          // nothing left to materialize, so deactivate it here instead of
+          // leaving it active and re-scanning it on every run.
+          if (rule.endDate !== null && nextRunDate.getTime() > rule.endDate.getTime()) {
+            await db.recurringRule.update({
+              where: { id: rule.id },
+              data: { active: false },
+            });
+          }
+
           return { created: ruleCreated, skipped: ruleSkipped };
         });
 
@@ -222,6 +232,17 @@ export class RecurringService {
       }
       return { upTo: upTo as number | null, annualRate };
     });
+    let previousUpTo: number | null = null;
+    for (const tier of tiers) {
+      if (tier.upTo === null) continue;
+      if (tier.upTo <= 0) {
+        throw new BadRequestException('interest tier upTo must be greater than 0');
+      }
+      if (previousUpTo !== null && tier.upTo <= previousUpTo) {
+        throw new BadRequestException('interest tier upTo values must be strictly increasing');
+      }
+      previousUpTo = tier.upTo;
+    }
     const last = tiers[tiers.length - 1];
     const nullCount = tiers.filter((tier) => tier.upTo === null).length;
     if (last.upTo !== null || nullCount !== 1) {
