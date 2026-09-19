@@ -43,4 +43,10 @@ describe('Fx (e2e)', () => {
     const res = await request(app.getHttpServer()).get('/api/v1/fx/rate').expect(200);
     expect(res.body).toMatchObject({ base: 'USD', quote: 'MXN' });
   });
+
+  it('rechaza un par no soportado con 400', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/fx/rate?base=USD&quote=EUR')
+      .expect(400);
+  });
 });

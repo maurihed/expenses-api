@@ -11,7 +11,7 @@ export interface FetchedRate {
   source: string;
 }
 
-export const FX_PROVIDERS = ['open.er-api.com', 'fawazahmed0/currency-api'] as const;
+export const SUPPORTED_PAIRS = new Set(['USD:MXN', 'MXN:USD']);
 
 const isPositiveNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;

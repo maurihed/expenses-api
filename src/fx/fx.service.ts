@@ -8,7 +8,10 @@ const FETCH_TIMEOUT_MS = 8000;
 @Injectable()
 export class FxService {
   private readonly logger = new Logger(FxService.name);
-  private readonly cacheMs = Number(process.env.FX_CACHE_MS ?? DEFAULT_CACHE_MS);
+  private readonly cacheMs = (() => {
+    const parsed = Number(process.env.FX_CACHE_MS);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CACHE_MS;
+  })();
 
   constructor(private prisma: PrismaService) {}
 
@@ -37,18 +40,7 @@ export class FxService {
       );
     }
 
-    const saved = await this.prisma.exchangeRate.upsert({
-      where: { base_quote: { base: normalizedBase, quote: normalizedQuote } },
-      update: { rate: fetched.rate, source: fetched.source, fetchedAt: new Date() },
-      create: {
-        base: normalizedBase,
-        quote: normalizedQuote,
-        rate: fetched.rate,
-        source: fetched.source,
-      },
-    });
-
-    return this.toResult(saved, false);
+    return this.saveRate(normalizedBase, normalizedQuote, fetched);
   }
 
   async refresh(base = 'USD', quote = 'MXN'): Promise<FxRateResult> {
@@ -62,17 +54,19 @@ export class FxService {
       );
     }
 
-    const saved = await this.prisma.exchangeRate.upsert({
-      where: { base_quote: { base: normalizedBase, quote: normalizedQuote } },
-      update: { rate: fetched.rate, source: fetched.source, fetchedAt: new Date() },
-      create: {
-        base: normalizedBase,
-        quote: normalizedQuote,
-        rate: fetched.rate,
-        source: fetched.source,
-      },
-    });
+    return this.saveRate(normalizedBase, normalizedQuote, fetched);
+  }
 
+  private async saveRate(
+    base: string,
+    quote: string,
+    fetched: FetchedRate,
+  ): Promise<FxRateResult> {
+    const saved = await this.prisma.exchangeRate.upsert({
+      where: { base_quote: { base, quote } },
+      update: { rate: fetched.rate, source: fetched.source, fetchedAt: new Date() },
+      create: { base, quote, rate: fetched.rate, source: fetched.source },
+    });
     return this.toResult(saved, false);
   }
 
@@ -89,10 +83,16 @@ export class FxService {
     };
   }
 
+  /**
+   * Consulta ambos proveedores en paralelo para acotar la latencia ante un
+   * fallo total (~8s) y prefiere el primario.
+   */
   private async fetchRate(base: string, quote: string): Promise<FetchedRate | null> {
-    const primary = await this.fetchPrimary(base, quote);
-    if (primary) return primary;
-    return this.fetchFallback(base, quote);
+    const [primary, fallback] = await Promise.all([
+      this.fetchPrimary(base, quote),
+      this.fetchFallback(base, quote),
+    ]);
+    return primary ?? fallback;
   }
 
   private async fetchPrimary(base: string, quote: string): Promise<FetchedRate | null> {
