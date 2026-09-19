@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { computeOpeningBalance } from '../domain/balance';
-import { creditPeriodPayment } from '../domain/credit';
+import { creditPeriodRange, isAfterCreditPeriod, isInCreditPeriod } from '../domain/credit';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
@@ -82,9 +82,9 @@ export class AccountsService {
       throw new BadRequestException(`Account ${id} is not a credit account`);
     }
 
-    const [charges, payments] = await Promise.all([
+    const [charges, payments, installments] = await Promise.all([
       this.prisma.transaction.findMany({
-        where: { accountId: id, type: 'EXPENSE' },
+        where: { accountId: id, type: 'EXPENSE', installmentPlan: null },
         select: { date: true, amount: true },
       }),
       this.prisma.transaction.findMany({
@@ -96,17 +96,35 @@ export class AccountsService {
         },
         select: { date: true, amount: true },
       }),
+      this.prisma.installment.findMany({
+        where: { plan: { accountId: id } },
+        select: { dueDate: true, amount: true },
+      }),
     ]);
 
+    const range = creditPeriodRange(account.statementClosingDay ?? 1, new Date());
+
+    const nonMsiCharges = charges.reduce(
+      (sum, t) => (isInCreditPeriod(t.date, range) ? sum + Number(t.amount) : sum),
+      0,
+    );
+    const periodPayments = payments.reduce(
+      (sum, t) => (isInCreditPeriod(t.date, range) ? sum + Number(t.amount) : sum),
+      0,
+    );
+    const msiDue = installments.reduce(
+      (sum, i) => (isInCreditPeriod(i.dueDate, range) ? sum + Number(i.amount) : sum),
+      0,
+    );
+    const msiCommitted = installments.reduce(
+      (sum, i) => (isAfterCreditPeriod(i.dueDate, range) ? sum + Number(i.amount) : sum),
+      0,
+    );
+
     const totalDebt = Number(account.balance);
-    const periodPayment = creditPeriodPayment({
-      closingDay: account.statementClosingDay ?? 1,
-      today: new Date(),
-      charges: charges.map((t) => ({ date: t.date, amount: Number(t.amount) })),
-      payments: payments.map((t) => ({ date: t.date, amount: Number(t.amount) })),
-    });
+    const periodPayment = Math.max(0, nonMsiCharges + msiDue - periodPayments);
     const available = account.creditLimit == null ? null : Number(account.creditLimit) - totalDebt;
 
-    return { totalDebt, periodPayment, available };
+    return { totalDebt, periodPayment, available, msiCommitted };
   }
 }
