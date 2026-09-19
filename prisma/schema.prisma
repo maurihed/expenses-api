@@ -178,3 +178,13 @@ model Installment {
   amount  Decimal         @db.Decimal(12, 2)
   @@unique([planId, number])
 }
+
+model ExchangeRate {
+  id        String   @id @default(uuid())
+  base      String
+  quote     String
+  rate      Decimal  @db.Decimal(18, 8)
+  source    String?
+  fetchedAt DateTime @default(now())
+  @@unique([base, quote])
+}
