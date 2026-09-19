@@ -47,7 +47,11 @@ export class TransactionsService {
     return { scope: 'PERSONAL', personId };
   }
 
-  private async resolveDestination(toAccountId: string | undefined, sourceAccountId: string) {
+  private async resolveDestination(
+    toAccountId: string | undefined,
+    sourceAccountId: string,
+    { allowArchived = false }: { allowArchived?: boolean } = {},
+  ) {
     if (!toAccountId) {
       throw new BadRequestException('toAccountId is required for transfers');
     }
@@ -55,7 +59,7 @@ export class TransactionsService {
       throw new BadRequestException('toAccountId must be different from accountId');
     }
     const destination = await this.prisma.account.findUnique({ where: { id: toAccountId } });
-    if (!destination || destination.archived) {
+    if (!destination || (!allowArchived && destination.archived)) {
       throw new BadRequestException(`Account ${toAccountId} not found`);
     }
     return destination;
@@ -163,7 +167,7 @@ export class TransactionsService {
 
     const accountId = dto.accountId ?? current.accountId;
     const account = await this.prisma.account.findUnique({ where: { id: accountId } });
-    if (!account || account.archived) {
+    if (!account) {
       throw new NotFoundException(`Account ${accountId} not found`);
     }
 
@@ -191,6 +195,7 @@ export class TransactionsService {
       const resolved = await this.resolveDestination(
         dto.toAccountId ?? currentToAccountId ?? undefined,
         account.id,
+        { allowArchived: true },
       );
       newToAccountId = resolved.id;
       newDestination = resolved;

@@ -220,6 +220,52 @@ describe('Transactions CRUD (e2e)', () => {
     if (cat) categoryIds.push(cat.id);
   });
 
+  it('permite editar y borrar un movimiento de una cuenta archivada', async () => {
+    const accountId = await createAccount('Crud Archivada', 1000);
+    const id = await createTx({
+      type: 'expense',
+      accountId,
+      amount: 250,
+      description: 'Histórico archivado',
+      date: '2026-09-18',
+    });
+
+    await request(app.getHttpServer()).delete(`/api/v1/accounts/${accountId}`).expect(200);
+
+    const res = await request(app.getHttpServer())
+      .put(`/api/v1/transactions/${id}`)
+      .send({ amount: 100 })
+      .expect(200);
+    expect(res.body.amount).toBe(100);
+
+    await request(app.getHttpServer()).delete(`/api/v1/transactions/${id}`).expect(200);
+    expect(await prisma.transaction.findUnique({ where: { id } })).toBeNull();
+  });
+
+  it('permite editar y borrar una transferencia con destino archivado', async () => {
+    const from = await createAccount('Crud Transf Origen', 1000);
+    const to = await createAccount('Crud Transf Destino', 500);
+    const id = await createTx({
+      type: 'transfer',
+      accountId: from,
+      toAccountId: to,
+      amount: 200,
+      description: 'Transferencia histórica',
+      date: '2026-09-18',
+    });
+
+    await request(app.getHttpServer()).delete(`/api/v1/accounts/${to}`).expect(200);
+
+    const res = await request(app.getHttpServer())
+      .put(`/api/v1/transactions/${id}`)
+      .send({ amount: 150 })
+      .expect(200);
+    expect(res.body.amount).toBe(150);
+
+    await request(app.getHttpServer()).delete(`/api/v1/transactions/${id}`).expect(200);
+    expect(await prisma.transaction.findUnique({ where: { id } })).toBeNull();
+  });
+
   it('responde 404 al editar o borrar un movimiento inexistente', async () => {
     const missing = '00000000-0000-4000-8000-000000000000';
     await request(app.getHttpServer())
