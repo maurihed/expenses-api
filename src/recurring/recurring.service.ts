@@ -373,6 +373,7 @@ export class RecurringService {
       endDate: dto.endDate,
       interestTiers: dto.interestTiers,
     });
+    data.active = dto.active ?? true;
     const rule = await this.prisma.recurringRule.create({ data });
     return this.toJson(rule);
   }
@@ -412,6 +413,7 @@ export class RecurringService {
       dto.dayOfMonth !== undefined ||
       dto.dayOfWeek !== undefined;
     if (!datesChanged) data.nextRunDate = current.nextRunDate;
+    data.active = dto.active !== undefined ? dto.active : current.active;
 
     const rule = await this.prisma.recurringRule.update({ where: { id }, data });
     return this.toJson(rule);

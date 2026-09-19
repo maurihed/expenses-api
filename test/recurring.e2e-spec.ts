@@ -425,6 +425,31 @@ describe('Recurring rules CRUD (e2e)', () => {
       .expect(400);
   });
 
+  it('reactiva una regla desactivada con PUT { active: true }', async () => {
+    const accountId = await createAccount('Rec Reactivar');
+    const rule = await createRule({
+      name: 'Reactivar',
+      type: 'subscription',
+      accountId,
+      amount: 100,
+      frequency: 'monthly',
+      startDate: '2026-01-01',
+    });
+
+    await request(app.getHttpServer()).delete(`/api/v1/recurring/${rule.id}`).expect(200);
+    expect((await listRules()).find((r) => r.id === rule.id)).toBeUndefined();
+
+    const res = await request(app.getHttpServer())
+      .put(`/api/v1/recurring/${rule.id}`)
+      .send({ active: true })
+      .expect(200);
+    expect(res.body.active).toBe(true);
+
+    const relisted = (await listRules()).find((r) => r.id === rule.id);
+    expect(relisted).toBeDefined();
+    expect(relisted.active).toBe(true);
+  });
+
   it('responde 404 al editar o desactivar una regla inexistente', async () => {
     await request(app.getHttpServer())
       .put(`/api/v1/recurring/${MISSING_ID}`)

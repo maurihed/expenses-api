@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -72,4 +73,8 @@ export class CreateRecurringRuleDto {
   @ValidateIf((_, value) => value !== undefined)
   @IsArray()
   interestTiers?: unknown[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsBoolean()
+  active?: boolean;
 }
