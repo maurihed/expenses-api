@@ -53,8 +53,23 @@ describe('Budgets (e2e)', () => {
     expect(count).toBe(1);
   });
 
+  it('acepta los meses límite 1 y 12', async () => {
+    await request(app.getHttpServer())
+      .put('/api/v1/budgets')
+      .send({ year: YEAR, month: 1, amount: 100 })
+      .expect(200);
+    await request(app.getHttpServer())
+      .put('/api/v1/budgets')
+      .send({ year: YEAR, month: 12, amount: 100 })
+      .expect(200);
+    await prisma.budget.deleteMany({ where: { year: YEAR, month: { in: [1, 12] } } });
+  });
+
   it('valida year/month y monto', async () => {
     await request(app.getHttpServer()).get(`/api/v1/budgets?year=${YEAR}`).expect(400);
+    await request(app.getHttpServer())
+      .get(`/api/v1/budgets?year=${YEAR}&month=0`)
+      .expect(400);
     await request(app.getHttpServer())
       .get(`/api/v1/budgets?year=${YEAR}&month=13`)
       .expect(400);
