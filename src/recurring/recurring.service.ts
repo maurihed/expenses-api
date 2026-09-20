@@ -128,10 +128,17 @@ export class RecurringService {
    * `failed`, then the sweep continues with the remaining rules so one bad
    * rule cannot starve the rest.
    */
-  async runDue(asOf: Date): Promise<{ created: number; skipped: number; failed: number }> {
+  async runDue(
+    asOf: Date,
+    ruleIds?: string[],
+  ): Promise<{ created: number; skipped: number; failed: number }> {
     const asOfDay = this.startOfUtcDay(asOf);
     const rules = await this.prisma.recurringRule.findMany({
-      where: { active: true, nextRunDate: { lte: asOfDay } },
+      where: {
+        active: true,
+        nextRunDate: { lte: asOfDay },
+        ...(ruleIds && ruleIds.length ? { id: { in: ruleIds } } : {}),
+      },
       orderBy: { createdAt: 'asc' },
     });
 
