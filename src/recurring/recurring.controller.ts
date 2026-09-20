@@ -18,8 +18,10 @@ export class RecurringController {
   }
 
   @Post('run')
-  run() {
-    return this.recurring.runDue(new Date());
+  run(@Query('ruleId') ruleId?: string | string[]) {
+    const ruleIds =
+      ruleId === undefined ? undefined : Array.isArray(ruleId) ? ruleId : [ruleId];
+    return this.recurring.runDue(new Date(), ruleIds);
   }
 
   @Put(':id')
