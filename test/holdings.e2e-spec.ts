@@ -8,6 +8,7 @@ describe('Holdings (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let accountId: string;
+  let cashAccountId: string | null = null;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -18,58 +19,53 @@ describe('Holdings (e2e)', () => {
     prisma = app.get(PrismaService);
 
     await prisma.assetPrice.upsert({
-      where: { symbol: 'VOO' },
-      update: { price: 700, previousClose: 690, currency: 'USD', name: 'Vanguard S&P 500 ETF', exchange: 'NYSEArca', source: 'e2e', fetchedAt: new Date() },
-      create: { symbol: 'VOO', price: 700, previousClose: 690, currency: 'USD', name: 'Vanguard S&P 500 ETF', exchange: 'NYSEArca', source: 'e2e' },
-    });
-    await prisma.exchangeRate.upsert({
-      where: { base_quote: { base: 'USD', quote: 'MXN' } },
-      update: { rate: 17, source: 'e2e', fetchedAt: new Date() },
-      create: { base: 'USD', quote: 'MXN', rate: 17, source: 'e2e' },
+      where: { symbol: 'SPY' },
+      update: { price: 700, previousClose: 690, currency: 'USD', name: 'SPDR S&P 500 ETF Trust', exchange: 'NYSEArca', source: 'e2e', fetchedAt: new Date() },
+      create: { symbol: 'SPY', price: 700, previousClose: 690, currency: 'USD', name: 'SPDR S&P 500 ETF Trust', exchange: 'NYSEArca', source: 'e2e' },
     });
 
     const account = await prisma.account.create({
-      data: { name: 'Inversión E2E', type: 'INVESTMENT', currency: 'MXN', openingBalance: 10000, balance: 10000 },
+      data: { name: 'Inversión E2E', type: 'INVESTMENT', currency: 'USD', openingBalance: 10000, balance: 10000 },
     });
     accountId = account.id;
   });
 
   afterAll(async () => {
-    await prisma.holding.deleteMany({ where: { accountId } });
-    await prisma.account.delete({ where: { id: accountId } });
-    await prisma.assetPrice.deleteMany({ where: { symbol: 'VOO', source: 'e2e' } });
-    await prisma.exchangeRate.deleteMany({ where: { base: 'USD', quote: 'MXN', source: 'e2e' } });
+    const accountIds = cashAccountId ? [accountId, cashAccountId] : [accountId];
+    await prisma.holding.deleteMany({ where: { accountId: { in: accountIds } } });
+    await prisma.account.deleteMany({ where: { id: { in: accountIds } } });
+    await prisma.assetPrice.deleteMany({ where: { symbol: 'SPY', source: 'e2e' } });
     await app.close();
   });
 
   it('crea una posición, descuenta el efectivo y devuelve los totales', async () => {
     await request(app.getHttpServer())
       .post(`/api/v1/accounts/${accountId}/holdings`)
-      .send({ symbol: 'VOO', quantity: 0.5, deductFromCash: true })
+      .send({ symbol: 'SPY', quantity: 0.5, deductFromCash: true })
       .expect(201);
 
     const res = await request(app.getHttpServer())
       .get(`/api/v1/accounts/${accountId}/holdings`)
       .expect(200);
 
-    expect(res.body.cashBalance).toBeCloseTo(10000 - 0.5 * 700 * 17, 2);
-    expect(res.body.positionsValue).toBeCloseTo(0.5 * 700 * 17, 2);
+    expect(res.body.cashBalance).toBeCloseTo(10000 - 0.5 * 700, 2);
+    expect(res.body.positionsValue).toBeCloseTo(0.5 * 700, 2);
     expect(res.body.totalValue).toBeCloseTo(10000, 2);
     expect(res.body.holdings).toHaveLength(1);
-    expect(res.body.holdings[0]).toMatchObject({ symbol: 'VOO', quantity: 0.5, stale: false });
+    expect(res.body.holdings[0]).toMatchObject({ symbol: 'SPY', quantity: 0.5, stale: false });
   });
 
   it('rechaza un símbolo duplicado con 409', async () => {
     await request(app.getHttpServer())
       .post(`/api/v1/accounts/${accountId}/holdings`)
-      .send({ symbol: 'VOO', quantity: 1 })
+      .send({ symbol: 'SPY', quantity: 1 })
       .expect(409);
   });
 
   it('rechaza una cantidad no positiva con 400', async () => {
     await request(app.getHttpServer())
       .post(`/api/v1/accounts/${accountId}/holdings`)
-      .send({ symbol: 'VOO', quantity: 0 })
+      .send({ symbol: 'SPY', quantity: 0 })
       .expect(400);
   });
 
@@ -77,11 +73,11 @@ describe('Holdings (e2e)', () => {
     const cash = await prisma.account.create({
       data: { name: 'Efectivo E2E holdings', type: 'CASH', balance: 0 },
     });
+    cashAccountId = cash.id;
     await request(app.getHttpServer())
       .post(`/api/v1/accounts/${cash.id}/holdings`)
-      .send({ symbol: 'VOO', quantity: 1 })
+      .send({ symbol: 'SPY', quantity: 1 })
       .expect(400);
-    await prisma.account.delete({ where: { id: cash.id } });
   });
 
   it('actualiza la cantidad sin reajustar el efectivo y elimina la posición', async () => {
@@ -100,7 +96,7 @@ describe('Holdings (e2e)', () => {
       .get(`/api/v1/accounts/${accountId}/holdings`)
       .expect(200);
     expect(after.body.cashBalance).toBeCloseTo(cashBefore, 2);
-    expect(after.body.positionsValue).toBeCloseTo(1 * 700 * 17, 2);
+    expect(after.body.positionsValue).toBeCloseTo(1 * 700, 2);
 
     await request(app.getHttpServer())
       .delete(`/api/v1/accounts/${accountId}/holdings/${holdingId}`)
@@ -115,14 +111,14 @@ describe('Holdings (e2e)', () => {
   it('GET /accounts enriquece las cuentas de inversión', async () => {
     await request(app.getHttpServer())
       .post(`/api/v1/accounts/${accountId}/holdings`)
-      .send({ symbol: 'VOO', quantity: 2 })
+      .send({ symbol: 'SPY', quantity: 2 })
       .expect(201);
 
     const res = await request(app.getHttpServer()).get('/api/v1/accounts').expect(200);
     const investment = res.body.find((a: { id: string }) => a.id === accountId);
-    expect(investment).toMatchObject({ type: 'INVESTMENT', currency: 'MXN' });
-    expect(investment.cashBalance).toBeCloseTo(10000 - 0.5 * 700 * 17, 2);
-    expect(investment.positionsValue).toBeCloseTo(2 * 700 * 17, 2);
-    expect(investment.totalValue).toBeCloseTo(10000 - 0.5 * 700 * 17 + 2 * 700 * 17, 2);
+    expect(investment).toMatchObject({ type: 'INVESTMENT', currency: 'USD' });
+    expect(investment.cashBalance).toBeCloseTo(10000 - 0.5 * 700, 2);
+    expect(investment.positionsValue).toBeCloseTo(2 * 700, 2);
+    expect(investment.totalValue).toBeCloseTo(10000 - 0.5 * 700 + 2 * 700, 2);
   });
 });
