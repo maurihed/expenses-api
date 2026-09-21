@@ -26,6 +26,9 @@ importers:
       class-validator:
         specifier: ^0.15.1
         version: 0.15.1
+      mongodb:
+        specifier: ^7.6.0
+        version: 7.6.0
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -51,9 +54,6 @@ importers:
       jest:
         specifier: ^30.5.2
         version: 30.5.2(@types/node@26.6.1)(ts-node@10.9.2(@types/node@26.6.1)(typescript@5.7.2))
-      mongodb:
-        specifier: ^7.6.0
-        version: 7.6.0
       prisma:
         specifier: ^5.22.0
         version: 5.22.0

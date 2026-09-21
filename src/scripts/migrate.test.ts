@@ -1,4 +1,4 @@
-import { computeOpeningBalance } from '../src/domain/balance';
+import { computeOpeningBalance } from '../domain/balance';
 import { toCalendarDate } from './migrate-from-mongo';
 
 test('opening balance compensa el efecto neto', () => {

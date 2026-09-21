@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import { MongoClient } from 'mongodb';
-import { AccountType, balanceDelta, computeOpeningBalance, TxType } from '../src/domain/balance';
+import { AccountType, balanceDelta, computeOpeningBalance, TxType } from '../domain/balance';
 
 type MongoAccount = { _id: unknown; name: string; balance: number; userId?: string };
 type MongoTransaction = {
@@ -23,7 +23,7 @@ const PERSONS = [
 
 function loadDotEnv() {
   try {
-    const raw = readFileSync(join(__dirname, '..', '.env'), 'utf8');
+    const raw = readFileSync(join(process.cwd(), '.env'), 'utf8');
     for (const line of raw.split('\n')) {
       const match = /^\s*([\w.-]+)\s*=\s*(.*)?\s*$/.exec(line);
       if (!match || match[1].startsWith('#')) continue;
