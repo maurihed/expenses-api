@@ -47,6 +47,15 @@ interface AccountRow {
   openingBalance: unknown;
 }
 
+interface HoldingRow {
+  id: string;
+  symbol: string;
+  name: string | null;
+  quantity: unknown;
+}
+
+type QuoteMap = Awaited<ReturnType<MarketService['getQuotes']>>;
+
 @Injectable()
 export class HoldingsService {
   constructor(
@@ -57,13 +66,31 @@ export class HoldingsService {
 
   async listForAccount(accountId: string): Promise<PortfolioSummary> {
     const account = await this.requireInvestmentAccount(accountId);
-    return this.buildSummary(account as AccountRow);
+    const rows = await this.loadRows(account.id);
+    const quotes = await this.loadQuotes(rows);
+    return this.buildSummary(account as AccountRow, rows, quotes);
   }
 
   async summariesForAccounts(accounts: AccountRow[]): Promise<Map<string, PortfolioSummary>> {
     const investments = accounts.filter((account) => account.type === 'INVESTMENT');
+    const rowsByAccount = new Map(
+      await Promise.all(
+        investments.map(async (account) => [account.id, await this.loadRows(account.id)] as const),
+      ),
+    );
+    const symbols = new Set<string>();
+    for (const rows of rowsByAccount.values()) {
+      for (const row of rows) symbols.add(row.symbol);
+    }
+    const quotes = symbols.size ? await this.market.getQuotes([...symbols]) : new Map();
     const entries = await Promise.all(
-      investments.map(async (account) => [account.id, await this.buildSummary(account)] as const),
+      investments.map(
+        async (account) =>
+          [
+            account.id,
+            await this.buildSummary(account, rowsByAccount.get(account.id) ?? [], quotes),
+          ] as const,
+      ),
     );
     return new Map(entries);
   }
@@ -172,16 +199,26 @@ export class HoldingsService {
     }
   }
 
-  private async buildSummary(account: AccountRow): Promise<PortfolioSummary> {
-    const accountCurrency = account.currency as Currency;
-    const rows = await this.prisma.holding.findMany({
-      where: { accountId: account.id },
+  private loadRows(accountId: string): Promise<HoldingRow[]> {
+    return this.prisma.holding.findMany({
+      where: { accountId },
       orderBy: { createdAt: 'asc' },
     });
+  }
+
+  private loadQuotes(rows: HoldingRow[]): Promise<QuoteMap> {
+    return rows.length
+      ? this.market.getQuotes(rows.map((row) => row.symbol))
+      : Promise.resolve(new Map());
+  }
+
+  private async buildSummary(
+    account: AccountRow,
+    rows: HoldingRow[],
+    quotes: QuoteMap,
+  ): Promise<PortfolioSummary> {
+    const accountCurrency = account.currency as Currency;
     const usdRate = accountCurrency === 'MXN' ? await this.usdRate() : null;
-    const quotes = rows.length
-      ? await this.market.getQuotes(rows.map((row) => row.symbol))
-      : new Map();
 
     const holdings: HoldingView[] = rows.map((row) => {
       const quote = quotes.get(row.symbol);

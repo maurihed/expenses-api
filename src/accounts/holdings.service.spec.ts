@@ -64,7 +64,10 @@ describe('HoldingsService.create', () => {
     expect(result).toMatchObject({ symbol: 'VOO', quantity: 1 });
     expect(prisma.account.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ balance: 10000 - 1 * 700 * 17 }),
+        data: expect.objectContaining({
+          balance: 10000 - 1 * 700 * 17,
+          openingBalance: 10000 - 1 * 700 * 17,
+        }),
       }),
     );
   });
@@ -161,5 +164,27 @@ describe('HoldingsService.update / remove', () => {
     await service.remove('acc1', 'h1');
 
     expect(prisma.holding.delete).toHaveBeenCalledWith({ where: { id: 'h1' } });
+    expect(prisma.account.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('HoldingsService.summariesForAccounts', () => {
+  it('pide las cotizaciones de la unión de símbolos una sola vez', async () => {
+    const prisma = buildPrisma();
+    (prisma.holding.findMany as jest.Mock).mockImplementation(
+      async ({ where }: { where: { accountId: string } }) =>
+        where.accountId === 'acc1'
+          ? [{ id: 'h1', symbol: 'VOO', name: 'Vanguard S&P 500 ETF', quantity: 1 }]
+          : [{ id: 'h2', symbol: 'VOO', name: 'Vanguard S&P 500 ETF', quantity: 2 }],
+    );
+    const marketMock = market();
+    const service = new HoldingsService(prisma as never, marketMock as never, fx() as never);
+    const accounts = [account({ id: 'acc1' }), account({ id: 'acc2' })];
+
+    const summaries = await service.summariesForAccounts(accounts as never);
+
+    expect(marketMock.getQuotes).toHaveBeenCalledTimes(1);
+    expect(marketMock.getQuotes).toHaveBeenCalledWith(['VOO']);
+    expect(summaries.size).toBe(2);
   });
 });
