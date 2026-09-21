@@ -75,6 +75,8 @@ model Account {
   creditLimit         Decimal?      @db.Decimal(12, 2)
   statementClosingDay Int?
   paymentDueDay       Int?
+  initialDebt         Decimal?      @db.Decimal(12, 2)
+  initialDebtDate     DateTime?     @db.Date
   archived            Boolean       @default(false)
   legacyMongoId       String?       @unique
   holdings            Holding[]

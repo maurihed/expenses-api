@@ -1,4 +1,4 @@
-import { creditPeriodPayment } from './credit';
+import { creditPeriodPayment, creditPeriodRange, initialDebtDue } from './credit';
 
 it('suma cargos del periodo y resta pagos', () => {
   const result = creditPeriodPayment({
@@ -35,4 +35,21 @@ it('cubre el ciclo previo cuando el corte clampeado cae tras febrero', () => {
     payments: [],
   });
   expect(result).toBe(1500);
+});
+
+describe('initialDebtDue', () => {
+  const range = creditPeriodRange(15, new Date('2026-03-20'));
+
+  it('cuenta la deuda inicial si su fecha cae en el periodo actual', () => {
+    expect(initialDebtDue(5000, new Date('2026-03-10'), range)).toBe(5000);
+  });
+
+  it('no cuenta si la fecha quedó en un periodo anterior', () => {
+    expect(initialDebtDue(5000, new Date('2026-02-10'), range)).toBe(0);
+  });
+
+  it('no cuenta sin monto o sin fecha', () => {
+    expect(initialDebtDue(null, new Date('2026-03-10'), range)).toBe(0);
+    expect(initialDebtDue(5000, null, range)).toBe(0);
+  });
 });

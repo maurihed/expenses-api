@@ -72,3 +72,17 @@ export function creditPeriodPayment(input: CreditPeriodPaymentInput): number {
 
   return Math.max(0, charges - payments);
 }
+
+/**
+ * Deuda inicial que debe pagarse en el corte del periodo actual. Cuenta solo si
+ * se registró dentro del periodo vigente; al avanzar el corte deja de contar
+ * (la deuda sigue en el saldo total hasta que se pague).
+ */
+export function initialDebtDue(
+  initialDebt: number | null,
+  initialDebtDate: Date | null,
+  range: CreditPeriodRange,
+): number {
+  if (initialDebt == null || initialDebtDate == null) return 0;
+  return isInCreditPeriod(initialDebtDate, range) ? initialDebt : 0;
+}

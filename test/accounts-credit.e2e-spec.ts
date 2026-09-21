@@ -106,6 +106,7 @@ describe('Accounts credit (e2e)', () => {
       periodPayment: 1500,
       available: 8500,
       msiCommitted: 0,
+      initialDebtDue: 0,
     });
 
     await request(app.getHttpServer())
@@ -128,6 +129,7 @@ describe('Accounts credit (e2e)', () => {
       periodPayment: 1000,
       available: 9000,
       msiCommitted: 0,
+      initialDebtDue: 0,
     });
 
     const category = await prisma.category.findUniqueOrThrow({ where: { name: `${label} Compras` } });
@@ -209,6 +211,7 @@ describe('Accounts credit (e2e)', () => {
       periodPayment: 700,
       available: 8500,
       msiCommitted: 800,
+      initialDebtDue: 0,
     });
   });
 
@@ -234,5 +237,54 @@ describe('Accounts credit (e2e)', () => {
       .post('/api/v1/accounts')
       .send({ name: `${label} Limite`, type: 'CREDIT', creditLimit: null })
       .expect(400);
+  });
+
+  it('cuenta la deuda inicial en el pago del corte del periodo actual', async () => {
+    const created = await createAccount({
+      name: `${label} Deuda inicial`,
+      type: 'CREDIT',
+      currency: 'MXN',
+      creditLimit: 10000,
+      statementClosingDay: closingDay,
+      initialDebt: 3000,
+    });
+
+    expect(created).toEqual(expect.objectContaining({ initialDebt: 3000, balance: 3000 }));
+
+    const summary = await request(app.getHttpServer())
+      .get(`/api/v1/accounts/${created.id}/credit-summary`)
+      .expect(200);
+
+    expect(summary.body).toEqual({
+      totalDebt: 3000,
+      periodPayment: 3000,
+      available: 7000,
+      msiCommitted: 0,
+      initialDebtDue: 3000,
+    });
+  });
+
+  it('deja de contar la deuda inicial cuando el corte ya avanzó', async () => {
+    const created = await createAccount({
+      name: `${label} Deuda vieja`,
+      type: 'CREDIT',
+      currency: 'MXN',
+      creditLimit: 10000,
+      statementClosingDay: closingDay,
+      initialDebt: 2000,
+    });
+
+    await prisma.account.update({
+      where: { id: created.id },
+      data: { initialDebtDate: new Date(Date.UTC(year, month - 2, 1)) },
+    });
+
+    const summary = await request(app.getHttpServer())
+      .get(`/api/v1/accounts/${created.id}/credit-summary`)
+      .expect(200);
+
+    expect(summary.body.initialDebtDue).toBe(0);
+    expect(summary.body.periodPayment).toBe(0);
+    expect(summary.body.totalDebt).toBe(2000);
   });
 });

@@ -34,4 +34,9 @@ export class UpdateAccountDto {
   @Min(1)
   @Max(31)
   paymentDueDay?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsNumber()
+  @Min(0)
+  initialDebt?: number;
 }
