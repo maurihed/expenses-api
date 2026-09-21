@@ -4,13 +4,17 @@ import { creditPeriodRange, isAfterCreditPeriod, isInCreditPeriod } from '../dom
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
+import { HoldingsService, PortfolioSummary } from './holdings.service';
 
 @Injectable()
 export class AccountsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private holdings: HoldingsService,
+  ) {}
 
-  private toJson(a: any) {
-    return {
+  private toJson(a: any, summary?: PortfolioSummary) {
+    const base = {
       id: a.id,
       name: a.name,
       type: a.type,
@@ -21,6 +25,15 @@ export class AccountsService {
       paymentDueDay: a.paymentDueDay ?? null,
       archived: a.archived,
     };
+    if (!summary) return base;
+    return {
+      ...base,
+      cashBalance: summary.cashBalance,
+      positionsValue: summary.positionsValue,
+      totalValue: summary.totalValue,
+      changePercent: summary.changePercent,
+      stale: summary.stale,
+    };
   }
 
   async findAll(includeArchived = false) {
@@ -28,7 +41,8 @@ export class AccountsService {
       where: includeArchived ? {} : { archived: false },
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map((a) => this.toJson(a));
+    const summaries = await this.holdings.summariesForAccounts(rows);
+    return rows.map((a) => this.toJson(a, summaries.get(a.id)));
   }
 
   async findOne(id: string) {
