@@ -76,6 +76,7 @@ model Account {
   paymentDueDay       Int?
   archived            Boolean       @default(false)
   legacyMongoId       String?       @unique
+  holdings            Holding[]
   transactions        Transaction[]
   recurringRules      RecurringRule[]
   installmentPlans    InstallmentPlan[]
@@ -236,4 +237,29 @@ model Budget {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@unique([year, month])
+}
+
+model Holding {
+  id        String   @id @default(uuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  symbol    String
+  name      String?
+  quantity  Decimal  @db.Decimal(18, 8)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([accountId, symbol])
+  @@index([accountId])
+}
+
+model AssetPrice {
+  id            String    @id @default(uuid())
+  symbol        String    @unique
+  price         Decimal   @db.Decimal(18, 4)
+  previousClose Decimal?  @db.Decimal(18, 4)
+  currency      String    @default("USD")
+  name          String?
+  exchange      String?
+  source        String?
+  fetchedAt     DateTime  @default(now())
 }
