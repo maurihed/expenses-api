@@ -23,10 +23,10 @@ export const convertToAccountCurrency = (
 ): number | null => {
   if (from === accountCurrency) return amount;
   if (from === 'USD' && accountCurrency === 'MXN') {
-    return usdRate == null ? null : amount * usdRate;
+    return usdRate == null || usdRate <= 0 ? null : amount * usdRate;
   }
   if (from === 'MXN' && accountCurrency === 'USD') {
-    return usdRate == null ? null : amount / usdRate;
+    return usdRate == null || usdRate <= 0 ? null : amount / usdRate;
   }
   return null;
 };

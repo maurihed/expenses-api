@@ -20,6 +20,15 @@ describe('convertToAccountCurrency', () => {
   it('moneda no soportada devuelve null', () => {
     expect(convertToAccountCurrency(10, 'EUR', 'MXN', 17)).toBeNull();
   });
+
+  it('tasa no positiva se trata como no disponible', () => {
+    expect(convertToAccountCurrency(10, 'USD', 'MXN', 0)).toBeNull();
+    expect(convertToAccountCurrency(10, 'MXN', 'USD', 0)).toBeNull();
+  });
+
+  it('MXN→USD divide entre la tasa', () => {
+    expect(convertToAccountCurrency(170, 'MXN', 'USD', 17)).toBeCloseTo(10, 6);
+  });
 });
 
 describe('valuePosition', () => {
