@@ -5,6 +5,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { DebtsModule } from './debts/debts.module';
 import { FxModule } from './fx/fx.module';
 import { HealthModule } from './health/health.module';
+import { MarketModule } from './market/market.module';
 import { PersonsModule } from './persons/persons.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RecurringModule } from './recurring/recurring.module';
@@ -20,6 +21,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     PersonsModule,
     RecurringModule,
     FxModule,
+    MarketModule,
     DebtsModule,
     BudgetsModule,
   ],
