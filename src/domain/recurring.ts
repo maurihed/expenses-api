@@ -1,4 +1,4 @@
-export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly';
+export type RecurringFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
 
 function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -27,6 +27,10 @@ export function nextOccurrence(
   dayOfWeek?: number | null,
 ): Date {
   const base = startOfUtcDay(from);
+
+  if (frequency === 'daily') {
+    return addDays(base, 1);
+  }
 
   if (frequency === 'monthly') {
     const day = dayOfMonth ?? base.getUTCDate();

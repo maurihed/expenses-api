@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AccountType, balanceDelta, TxType } from '../domain/balance';
-import { computeInterest, InterestTier } from '../domain/interest';
+import { computeInterest, InterestFrequency, InterestTier } from '../domain/interest';
 import { nextOccurrence, RecurringFrequency } from '../domain/recurring';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRecurringRuleDto, RecurringScopeValue, RecurringTypeValue } from './dto/create-recurring-rule.dto';
@@ -66,6 +66,7 @@ export class RecurringService {
       scope: any;
       personId: string | null;
       amount: Prisma.Decimal | null;
+      frequency: string;
       interestTiers: Prisma.JsonValue | null;
     },
     account: { id: string; type: string; balance: Prisma.Decimal },
@@ -75,7 +76,13 @@ export class RecurringService {
     let txType: TxType;
 
     if (rule.type === 'INTEREST') {
-      amount = computeInterest(Number(account.balance), this.parseTiers(rule.interestTiers));
+      const interestFrequency: InterestFrequency =
+        rule.frequency === 'DAILY' ? 'daily' : 'monthly';
+      amount = computeInterest(
+        Number(account.balance),
+        this.parseTiers(rule.interestTiers),
+        interestFrequency,
+      );
       if (amount <= 0) {
         return { amount: 0, transactionId: null };
       }
@@ -267,8 +274,8 @@ export class RecurringService {
     const type = input.type;
     const frequency = (input.frequency ?? 'monthly') as RecurringFrequency;
 
-    if (type === 'interest' && frequency !== 'monthly') {
-      throw new BadRequestException('interest rules must use monthly frequency');
+    if (type === 'interest' && frequency !== 'monthly' && frequency !== 'daily') {
+      throw new BadRequestException('interest rules must use daily or monthly frequency');
     }
 
     let amount: number | null = null;
@@ -323,7 +330,7 @@ export class RecurringService {
     let dayOfWeek: number | null = null;
     if (frequency === 'monthly') {
       dayOfMonth = input.dayOfMonth ?? startDate.getUTCDate();
-    } else {
+    } else if (frequency === 'weekly' || frequency === 'biweekly') {
       dayOfWeek = input.dayOfWeek ?? startDate.getUTCDay();
     }
 

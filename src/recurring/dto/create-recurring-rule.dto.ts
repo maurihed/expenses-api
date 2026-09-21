@@ -14,7 +14,7 @@ import {
 import { IsCalendarDate } from '../../transactions/dto/create-transaction.dto';
 
 export const RECURRING_TYPES = ['subscription', 'income', 'interest'] as const;
-export const RECURRING_FREQUENCIES = ['weekly', 'biweekly', 'monthly'] as const;
+export const RECURRING_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly'] as const;
 export const RECURRING_SCOPES = ['joint', 'personal'] as const;
 
 export type RecurringTypeValue = (typeof RECURRING_TYPES)[number];

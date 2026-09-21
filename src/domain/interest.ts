@@ -3,8 +3,20 @@ export interface InterestTier {
   annualRate: number;
 }
 
-export function computeInterest(balance: number, tiers: InterestTier[]): number {
+/** Frecuencias soportadas para reglas de interés. */
+export type InterestFrequency = 'daily' | 'monthly';
+
+const periodsPerYear = (frequency: InterestFrequency): number =>
+  frequency === 'daily' ? 365 : 12;
+
+export function computeInterest(
+  balance: number,
+  tiers: InterestTier[],
+  frequency: InterestFrequency = 'monthly',
+): number {
   if (tiers.length === 0 || balance <= 0) return 0;
+
+  const periods = periodsPerYear(frequency);
 
   const sorted = [...tiers].sort((a, b) => {
     if (a.upTo === null) return 1;
@@ -17,7 +29,7 @@ export function computeInterest(balance: number, tiers: InterestTier[]): number 
   for (const tier of sorted) {
     const cap = tier.upTo ?? Infinity;
     const portion = Math.max(0, Math.min(balance, cap) - prev);
-    interest += portion * (tier.annualRate / 12);
+    interest += portion * (tier.annualRate / periods);
     prev = cap;
     if (balance <= prev) break;
   }

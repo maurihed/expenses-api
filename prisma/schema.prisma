@@ -37,6 +37,7 @@ enum RecurringType {
 }
 
 enum RecurringFrequency {
+  DAILY
   WEEKLY
   BIWEEKLY
   MONTHLY

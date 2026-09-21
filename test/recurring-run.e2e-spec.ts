@@ -223,6 +223,35 @@ describe('Recurring runDue engine (e2e)', () => {
     expect(occurrences[0].transactionId).toBe(tx[0].id);
   });
 
+  it('materializa interés diario (tasa anual / 365) en cada día vencido', async () => {
+    const accountId = await createAccount('Run Interés Diario', 10000);
+    const rule = await createRule({
+      name: 'Interés diario',
+      type: 'interest',
+      accountId,
+      interestTiers: [{ upTo: null, annualRate: 0.365 }],
+      frequency: 'daily',
+      startDate: '2025-07-01',
+    });
+    expect(rule.nextRunDate).toBe('2025-07-01');
+    expect(rule.dayOfMonth).toBeNull();
+    expect(rule.dayOfWeek).toBeNull();
+
+    const result = await runAsOf(new Date('2025-07-03T00:00:00.000Z'));
+    expect(result).toEqual({ created: 3, skipped: 0, failed: 0 });
+
+    const tx = await prisma.transaction.findMany({
+      where: { accountId },
+      orderBy: { date: 'asc' },
+    });
+    expect(tx).toHaveLength(3);
+    expect(tx.map((t) => day(t.date))).toEqual(['2025-07-01', '2025-07-02', '2025-07-03']);
+    expect(tx.every((t) => t.type === 'INCOME')).toBe(true);
+    // 10000 * 0.365 / 365 = 10/día, componiendo sobre el saldo actualizado.
+    expect(tx.map((t) => Number(t.amount))).toEqual([10, 10.01, 10.02]);
+    expect(Number(await balanceOf(accountId))).toBeCloseTo(10030.03, 2);
+  });
+
   it('registra la ocurrencia de interés con monto 0 y sin transacción', async () => {
     const accountId = await createAccount('Run Interés Cero', 0);
     const rule = await createRule({

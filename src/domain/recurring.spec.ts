@@ -61,3 +61,13 @@ describe('nextOccurrence BIWEEKLY', () => {
     expect(iso(nextOccurrence('biweekly', new Date('2026-01-14'), null, 1))).toBe('2026-01-19');
   });
 });
+
+describe('nextOccurrence DAILY', () => {
+  it('avanza un día natural', () => {
+    expect(iso(nextOccurrence('daily', new Date('2026-01-15')))).toBe('2026-01-16');
+  });
+
+  it('cruza el fin de mes', () => {
+    expect(iso(nextOccurrence('daily', new Date('2026-01-31')))).toBe('2026-02-01');
+  });
+});

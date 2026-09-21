@@ -189,6 +189,41 @@ describe('Recurring rules CRUD (e2e)', () => {
     );
   });
 
+  it('acepta una regla INTEREST diaria y rechaza frecuencias no soportadas', async () => {
+    const accountId = await createAccount('Rec Interés Diario');
+
+    const daily = await createRule({
+      name: 'Interés diario',
+      type: 'interest',
+      accountId,
+      interestTiers: [{ upTo: null, annualRate: 0.1 }],
+      frequency: 'daily',
+      startDate: '2026-03-01',
+    });
+    expect(daily).toEqual(
+      expect.objectContaining({
+        type: 'interest',
+        frequency: 'daily',
+        startDate: '2026-03-01',
+        nextRunDate: '2026-03-01',
+        dayOfMonth: null,
+        dayOfWeek: null,
+      }),
+    );
+
+    await request(app.getHttpServer())
+      .post('/api/v1/recurring')
+      .send({
+        name: 'Interés semanal',
+        type: 'interest',
+        accountId,
+        interestTiers: [{ upTo: null, annualRate: 0.1 }],
+        frequency: 'weekly',
+        startDate: '2026-03-01',
+      })
+      .expect(400);
+  });
+
   it('acepta el payload exacto del formulario (nulls explícitos) al crear y editar', async () => {
     const accountId = await createAccount('Rec Payload Form');
     const categoryId = await createCategory('Payload Form');
@@ -525,7 +560,7 @@ describe('Recurring rules CRUD (e2e)', () => {
         type: 'subscription',
         accountId,
         amount: 10,
-        frequency: 'daily',
+        frequency: 'yearly',
         startDate: '2026-01-01',
       })
       .expect(400);

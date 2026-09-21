@@ -33,4 +33,13 @@ describe('computeInterest', () => {
   it('aplica la tasa del primer tramo a un balance parcial', () => {
     expect(computeInterest(500, [{ upTo: 10000, annualRate: 0.1 }, { upTo: null, annualRate: 0.02 }])).toBe(4.17);
   });
+
+  it('usa 365 periodos al año con frecuencia diaria', () => {
+    // 10000*0.1 + 5000*0.02 = 1100 anual → /365
+    expect(computeInterest(15000, tiers, 'daily')).toBe(3.01);
+  });
+
+  it('la frecuencia mensual es el default', () => {
+    expect(computeInterest(15000, tiers)).toBe(computeInterest(15000, tiers, 'monthly'));
+  });
 });
